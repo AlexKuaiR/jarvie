@@ -1,8 +1,10 @@
 from datetime import datetime, timezone
+
+from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
+
 from .config import GOOGLE_CREDENTIALS, GOOGLE_TOKEN
 
 SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]

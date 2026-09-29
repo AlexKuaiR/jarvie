@@ -1,11 +1,12 @@
-from datetime import datetime, timedelta, time
-from pipecat.services.llm_service import FunctionCallParams
-from . import calendar
-from .config import TZ
 import asyncio
-from loguru import logger
-from . import deadlines
 import json
+from datetime import datetime, time, timedelta
+
+from loguru import logger
+from pipecat.services.llm_service import FunctionCallParams
+
+from . import calendar, deadlines
+from .config import TZ
 
 
 async def warmup():
@@ -96,7 +97,13 @@ async def add_deadlines(
     """
 
     new_id = deadlines.add(
-        name=name, date=date, course=course, kind=kind, weight=weight, topics=topics
+        name=name,
+        date=date,
+        course=course,
+        kind=kind,
+        weight=weight,
+        topics=topics,
+        prep_hours_needed=prep_hours_needed,
     )
     await params.result_callback({"added": True, "id": new_id, "name": name})
 
@@ -134,7 +141,7 @@ async def complete_deadline(params: FunctionCallParams, item_id: int):
 async def update_deadline(
     params: FunctionCallParams,
     item_id: int,
-    name: str,
+    name: str | None = None,
     date: str | None = None,
     course: str | None = None,
     kind: str | None = None,

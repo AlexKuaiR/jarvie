@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
-from .db import connect
+
 from .config import TZ
+from .db import connect
 
 
 def add(

@@ -20,49 +20,41 @@ Run the bot using::
     uv run bot.py
 """
 
-from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
-from loguru import logger
-from pipecat.processors.aggregators.llm_context import LLMContext
-from pipecat.services.cartesia.tts import CartesiaTTSService
-from pipecat.services.deepgram.stt import DeepgramSTTService
-from dotenv import load_dotenv
-from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.task import PipelineParams, PipelineTask
-from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
+import asyncio
 import os
-from pipecat.transports.base_transport import TransportParams
-from pipecat.runner.types import DailyRunnerArguments
-from pipecat.runner.types import RunnerArguments
-from pipecat.transports.base_transport import BaseTransport
-from pipecat.pipeline.runner import PipelineRunner
+from datetime import datetime
+
+from dotenv import load_dotenv
+from loguru import logger
+from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
+from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import LLMRunFrame
-from pipecat.runner.types import SmallWebRTCRunnerArguments
+from pipecat.pipeline.pipeline import Pipeline
+from pipecat.pipeline.runner import PipelineRunner
+from pipecat.pipeline.task import PipelineParams, PipelineTask
+from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
 )
+from pipecat.runner.types import DailyRunnerArguments, RunnerArguments, SmallWebRTCRunnerArguments
+from pipecat.services.cartesia.tts import CartesiaTTSService
+from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.openai.llm import OpenAILLMService
-from pipecat.transports.daily.transport import DailyTransport, DailyParams
-
-# Smart Turn Analyzers
-from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
-from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
-from pipecat.turns.user_turn_strategies import UserTurnStrategies
-from pipecat.audio.vad.vad_analyzer import VADParams
-
-# asyncio
-import asyncio
-
-# wakeword
-from pipecat.turns.user_turn_strategies import default_user_turn_start_strategies
+from pipecat.transports.base_transport import BaseTransport, TransportParams
+from pipecat.transports.daily.transport import DailyParams, DailyTransport
+from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
+from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
 from pipecat.turns.user_start import WakePhraseUserTurnStartStrategy
+from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
+from pipecat.turns.user_turn_strategies import (
+    UserTurnStrategies,
+    default_user_turn_start_strategies,
+)
 
-# Tools
-from jarvis.tools import ALL_TOOLS, warmup, briefing
-
-from datetime import datetime
 from jarvis.config import TZ
+from jarvis.tools import ALL_TOOLS, briefing, warmup
 
 load_dotenv(override=True)
 
@@ -82,30 +74,24 @@ async def run_bot(transport: BaseTransport):
         ),
     )
 
-    # LLM service
+    today = datetime.now(TZ).strftime("%A, %B %d, %Y")
+
+    # LLM service. The system prompt lives here, not as a "system" message in LLMContext:
+    # Pipecat deprecated that in 1.9 (removed in 2.0) because the service composes its own
+    # instructions (tool guidance etc.) around this one.
     llm = OpenAILLMService(
         api_key=os.getenv("OPENAI_API_KEY"),
         settings=OpenAILLMService.Settings(
             model=os.getenv("OPENAI_MODEL", "gpt-4.1"),
-            system_instruction="You are a helpful assistant in a voice conversation. Your responses will be spoken aloud, so avoid emojis, bullet points, or other formatting that can't be spoken. Respond to what the user said in a creative, helpful, and brief way.",
+            system_instruction=(
+                f"You are a helpful voice assistant. Today is {today}. "
+                "Your responses are spoken aloud, so avoid emojis, bullet points, and "
+                "other formatting that can't be spoken. Be brief."
+            ),
         ),
     )
 
-    today = datetime.now(TZ).strftime("%A, %B %d, %Y")
-
-    context = LLMContext(
-        messages=[
-            {
-                "role": "system_instruction",
-                "content": (
-                    f"You are a helpful voice assistant. Today is {today}. "
-                    "Your responses are spoken aloud, so avoid emojis and "
-                    "formatting. Be brief."
-                ),
-            }
-        ],  # leave as-is
-        tools=ALL_TOOLS,
-    )
+    context = LLMContext(messages=[], tools=ALL_TOOLS)
 
     wake = WakePhraseUserTurnStartStrategy(phrases=["jarvis"], timeout=10.0)
 
@@ -152,7 +138,9 @@ async def run_bot(transport: BaseTransport):
         asyncio.create_task(warmup())
         brief = briefing()
         if brief:
-            context.add_message({"role": "system", "content": brief})
+            # "developer", not "system": with an empty context this would be the first
+            # message, and an initial "system" message is the deprecated form (see llm above).
+            context.add_message({"role": "developer", "content": brief})
         context.add_message({"role": "user", "content": "Please introduce yourself."})
         await task.queue_frames([LLMRunFrame()])
 
