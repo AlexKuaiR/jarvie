@@ -20,7 +20,6 @@ Run the bot using::
     uv run bot.py
 """
 
-
 from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
 from loguru import logger
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -39,7 +38,10 @@ from pipecat.transports.base_transport import BaseTransport
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.frames.frames import LLMRunFrame
 from pipecat.runner.types import SmallWebRTCRunnerArguments
-from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair, LLMUserAggregatorParams
+from pipecat.processors.aggregators.llm_response_universal import (
+    LLMContextAggregatorPair,
+    LLMUserAggregatorParams,
+)
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.transports.daily.transport import DailyTransport, DailyParams
 
@@ -65,8 +67,6 @@ from jarvis.config import TZ
 load_dotenv(override=True)
 
 
-
-
 async def run_bot(transport: BaseTransport):
     """Main bot logic."""
     logger.info("Starting bot")
@@ -76,31 +76,34 @@ async def run_bot(transport: BaseTransport):
 
     # Text-to-Speech service
     tts = CartesiaTTSService(
-            api_key=os.getenv("CARTESIA_API_KEY"),
-            settings=CartesiaTTSService.Settings(
-                voice=os.getenv("CARTESIA_VOICE_ID", "71a7ad14-091c-4e8e-a314-022ece01c121"),
-            ),
-        )
-
+        api_key=os.getenv("CARTESIA_API_KEY"),
+        settings=CartesiaTTSService.Settings(
+            voice=os.getenv("CARTESIA_VOICE_ID", "71a7ad14-091c-4e8e-a314-022ece01c121"),
+        ),
+    )
 
     # LLM service
     llm = OpenAILLMService(
-            api_key=os.getenv("OPENAI_API_KEY"),
-            settings=OpenAILLMService.Settings(
-                model=os.getenv("OPENAI_MODEL", "gpt-4.1"),
-                system_instruction="You are a helpful assistant in a voice conversation. Your responses will be spoken aloud, so avoid emojis, bullet points, or other formatting that can't be spoken. Respond to what the user said in a creative, helpful, and brief way.",
-            ),
-        )
+        api_key=os.getenv("OPENAI_API_KEY"),
+        settings=OpenAILLMService.Settings(
+            model=os.getenv("OPENAI_MODEL", "gpt-4.1"),
+            system_instruction="You are a helpful assistant in a voice conversation. Your responses will be spoken aloud, so avoid emojis, bullet points, or other formatting that can't be spoken. Respond to what the user said in a creative, helpful, and brief way.",
+        ),
+    )
 
     today = datetime.now(TZ).strftime("%A, %B %d, %Y")
 
     context = LLMContext(
-        messages=[{"role": "system",
-            "content": (f"You are a helpful voice assistant. Today is {today}. "
-            "Your responses are spoken aloud, so avoid emojis and "
-            "formatting. Be brief.")
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    f"You are a helpful voice assistant. Today is {today}. "
+                    "Your responses are spoken aloud, so avoid emojis and "
+                    "formatting. Be brief."
+                ),
             }
-            ],                                  # leave as-is
+        ],  # leave as-is
         tools=ALL_TOOLS,
     )
 
@@ -109,44 +112,30 @@ async def run_bot(transport: BaseTransport):
     @wake.event_handler("on_wake_phrase_detected")
     async def on_wake(strategy, phrase):
         logger.info("WAKE: matched '{}'", phrase)
-    
+
     user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
         context,
         user_params=LLMUserAggregatorParams(
             vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=1.0)),
             user_turn_strategies=UserTurnStrategies(
-                start = [wake, *default_user_turn_start_strategies()],
-                stop=[TurnAnalyzerUserTurnStopStrategy(
-                    turn_analyzer=LocalSmartTurnAnalyzerV3()
-                )]
+                start=[wake, *default_user_turn_start_strategies()],
+                stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=LocalSmartTurnAnalyzerV3())],
             ),
         ),
     )
 
-
-    
-
-
     # Pipeline - assembled from reusable components
-    pipeline = Pipeline([
-        transport.input(),
-
-        stt,
-
-        user_aggregator,
-
-        llm,
-
-        tts,
-
-        
-        transport.output(),
-
-        
-        assistant_aggregator,
-
-    ])
-
+    pipeline = Pipeline(
+        [
+            transport.input(),
+            stt,
+            user_aggregator,
+            llm,
+            tts,
+            transport.output(),
+            assistant_aggregator,
+        ]
+    )
 
     task = PipelineTask(
         pipeline,
@@ -154,8 +143,7 @@ async def run_bot(transport: BaseTransport):
             enable_metrics=True,
             enable_usage_metrics=True,
         ),
-        observers=[
-        ],
+        observers=[],
     )
 
     @task.rtvi.event_handler("on_client_ready")
@@ -176,9 +164,6 @@ async def run_bot(transport: BaseTransport):
     async def on_client_disconnected(transport, client):
         logger.info("Client disconnected")
         await task.cancel()
-
-
-
 
     runner = PipelineRunner(handle_sigint=False)
 

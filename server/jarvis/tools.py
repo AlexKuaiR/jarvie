@@ -7,19 +7,24 @@ from loguru import logger
 from . import deadlines
 import json
 
+
 async def warmup():
     # prebuild slow clients while bot sets up
     logger.info("warmup: building calendar service")
     await asyncio.to_thread(calendar._service)
     logger.info("warmup: calendar ready")
 
+
 def briefing() -> str | None:
-    items = deadlines.upcoming(days = 7)
+    items = deadlines.upcoming(days=7)
     if not items:
         return None
-    return (f"Upcoming this week: {json.dumps(items)}."
-            "Mention at most the two most urgent in your greeting, briefly. "
-            "If the user acknowledges one, call mute_deadline.")
+    return (
+        f"Upcoming this week: {json.dumps(items)}."
+        "Mention at most the two most urgent in your greeting, briefly. "
+        "If the user acknowledges one, call mute_deadline."
+    )
+
 
 async def get_events(params: FunctionCallParams, day_offset: int = 0):
     """Get the user's calendar events for a single day.
@@ -39,11 +44,14 @@ async def get_events(params: FunctionCallParams, day_offset: int = 0):
         logger.error("calendar failed: {}", e)
         await params.result_callback({"found": False, "error": "Calendar unavailable."})
         return
-    await params.result_callback({
-        "date": target.isoformat(),
-        "found": bool(events),
-        "events": events,
-    })
+    await params.result_callback(
+        {
+            "date": target.isoformat(),
+            "found": bool(events),
+            "events": events,
+        }
+    )
+
 
 async def get_deadlines(params: FunctionCallParams, days: int = 7):
     """Get the user's upcoming exams, assignments, and application deadlines
@@ -52,41 +60,46 @@ async def get_deadlines(params: FunctionCallParams, days: int = 7):
     Always call it rather than guessing.
 
     Each item contains an id. You need the id to mute, update, or complete an item later,
-    so keep track of it, but never say it out loud. 
+    so keep track of it, but never say it out loud.
 
     Args:
         days: how many days forward ahead to look. Defaults to 7.
     """
-    out = deadlines.upcoming(days = days)
+    out = deadlines.upcoming(days=days)
     await params.result_callback({"found": bool(out), "items": out})
 
-async def add_deadlines(params: FunctionCallParams, name: str, date: str, 
-                        course: str | None = None, kind: str = "exam", 
-                        weight: float | None = None, prep_hours_needed: float | None = None, 
-                        topics: str | None = None):
+
+async def add_deadlines(
+    params: FunctionCallParams,
+    name: str,
+    date: str,
+    course: str | None = None,
+    kind: str = "exam",
+    weight: float | None = None,
+    prep_hours_needed: float | None = None,
+    topics: str | None = None,
+):
     """Record a new exam, assignment, or application deadline.
 
     Call this when a user mentions something due in the future that isn't already tracked,
     for example "I have a chem midterm on the 24th", "I have a chem homework due on the 20th".
 
     Resolve relative dates yourself using today's date from the system message. Never guess
-    a date, if the user is too vague, ask. 
+    a date, if the user is too vague, ask.
 
     Args:
         name: Short label, e.g. "Midterm 1".
         date: ISO 8601, "YYYY-MM-DD".
         kind: "exam", "assignment", or "application".
         weight: Fraction of the course grade, e.g. 0.25 for 25%.
-        topics: What it covers, in the user's own words.     
+        topics: What it covers, in the user's own words.
     """
 
-    new_id = deadlines.add(name=name, date=date, course=course, kind=kind,
-                           weight=weight, topics=topics)
-    await params.result_callback({
-        "added": True,
-        "id": new_id,
-        "name": name
-    })
+    new_id = deadlines.add(
+        name=name, date=date, course=course, kind=kind, weight=weight, topics=topics
+    )
+    await params.result_callback({"added": True, "id": new_id, "name": name})
+
 
 async def mute_deadline(params: FunctionCallParams, item_id: int, days: int = 3):
     """Stop reminding the user about a specific deadline for a few days.
@@ -99,7 +112,8 @@ async def mute_deadline(params: FunctionCallParams, item_id: int, days: int = 3)
     first to find it.
     """
     ok = deadlines.mute(item_id, days)
-    await params.result_callback({"muted" : ok})
+    await params.result_callback({"muted": ok})
+
 
 async def complete_deadline(params: FunctionCallParams, item_id: int):
     """Mark a deadline as finished so it stops appearing in reminders.
@@ -116,11 +130,18 @@ async def complete_deadline(params: FunctionCallParams, item_id: int):
     ok = deadlines.complete(item_id)
     await params.result_callback({"completed": ok})
 
-async def update_deadline(params: FunctionCallParams, item_id: int, 
-                          name: str, date: str | None = None,
-                          course: str | None = None, kind: str | None = None, 
-                          weight: float | None = None, prep_hours_needed: float | None = None, 
-                          topics: str | None = None):
+
+async def update_deadline(
+    params: FunctionCallParams,
+    item_id: int,
+    name: str,
+    date: str | None = None,
+    course: str | None = None,
+    kind: str | None = None,
+    weight: float | None = None,
+    prep_hours_needed: float | None = None,
+    topics: str | None = None,
+):
     """Change details of a deadline that already exists.
 
     Call this when something about a tracked item changes — the date moved,
@@ -136,13 +157,29 @@ async def update_deadline(params: FunctionCallParams, item_id: int,
     Args:
         date: ISO 8601, "YYYY-MM-DD".
     """
-    fields = {k: v for k, v in {
-         "name": name, "date": date, "course": course, "kind": kind, "weight": weight, 
-         "prep_hours_needed": prep_hours_needed, "topics": topics,
-    }.items() if v is not None}
+    fields = {
+        k: v
+        for k, v in {
+            "name": name,
+            "date": date,
+            "course": course,
+            "kind": kind,
+            "weight": weight,
+            "prep_hours_needed": prep_hours_needed,
+            "topics": topics,
+        }.items()
+        if v is not None
+    }
 
     ok = deadlines.update(item_id, **fields)
     await params.result_callback({"updated": ok})
 
-ALL_TOOLS = [get_events, get_deadlines, add_deadlines, complete_deadline, mute_deadline, 
-             update_deadline]
+
+ALL_TOOLS = [
+    get_events,
+    get_deadlines,
+    add_deadlines,
+    complete_deadline,
+    mute_deadline,
+    update_deadline,
+]

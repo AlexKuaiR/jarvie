@@ -22,9 +22,10 @@ CREATE TABLE IF NOT EXISTS deadlines (
 );
 """
 
+
 def connect():
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row      # rows behave like dicts
+    conn.row_factory = sqlite3.Row  # rows behave like dicts
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(SCHEMA)
     return conn
