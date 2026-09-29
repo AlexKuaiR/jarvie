@@ -2,8 +2,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from jarvis import deadlines
-from jarvis.config import TZ
+from jarvie import deadlines
+from jarvie.config import TZ
 
 pytestmark = pytest.mark.usefixtures("temp_db")
 

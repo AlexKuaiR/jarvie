@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from jarvis import calendar
-from jarvis.config import TZ
+from jarvie import calendar
+from jarvie.config import TZ
 
 
 class FakeService:

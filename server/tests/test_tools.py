@@ -4,9 +4,9 @@ from datetime import datetime, timedelta
 import pytest
 from pipecat.processors.aggregators.llm_context import LLMContext
 
-from jarvis import calendar, deadlines, tools
-from jarvis.config import TZ
-from jarvis.db import connect
+from jarvie import calendar, deadlines, tools
+from jarvie.config import TZ
+from jarvie.db import connect
 
 pytestmark = pytest.mark.usefixtures("temp_db")
 

@@ -12,6 +12,7 @@
       "Read(./.env.*)",
       "Read(./server/.env)",
       "Read(./server/.env.*)",
+      "Read(~/jarvie-data/**)",
       "Read(~/jarvis-data/**)",
       "Bash(sudo *)",
       "Bash(rm -rf *)",

@@ -53,8 +53,8 @@ from pipecat.turns.user_turn_strategies import (
     default_user_turn_start_strategies,
 )
 
-from jarvis.config import TZ
-from jarvis.tools import ALL_TOOLS, briefing, warmup
+from jarvie.config import TZ
+from jarvie.tools import ALL_TOOLS, briefing, warmup
 
 load_dotenv(override=True)
 
