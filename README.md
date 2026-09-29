@@ -136,3 +136,7 @@ sorted out.
 - [Pipecat documentation](https://docs.pipecat.ai/)
 - [Pipecat examples](https://github.com/pipecat-ai/pipecat-examples)
 - [Claude Code documentation](https://docs.anthropic.com/en/docs/claude-code)
+
+## License
+
+[MIT](LICENSE)
