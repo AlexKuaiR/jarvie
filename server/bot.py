@@ -96,7 +96,7 @@ async def run_bot(transport: BaseTransport):
     context = LLMContext(
         messages=[
             {
-                "role": "system",
+                "role": "system_instruction",
                 "content": (
                     f"You are a helpful voice assistant. Today is {today}. "
                     "Your responses are spoken aloud, so avoid emojis and "
