@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(server/.venv/bin/python -m pytest *)",
+      "Bash(server/.venv/bin/ruff *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./server/.env)",
+      "Read(./server/.env.*)",
+      "Bash(sudo *)",
+      "Bash(rm -rf *)",
+      "Bash(ssh *)",
+      "Bash(scp *)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "server/.venv/bin/ruff format server --quiet || true"
+          }
+        ]
+      }
+    ]
+  }
+}
