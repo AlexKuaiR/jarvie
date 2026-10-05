@@ -109,3 +109,25 @@ def mute(item_id: int, days: int = 3) -> bool:
             ).rowcount
             > 0
         )
+
+# get overdue assignments
+def overdue() -> list[dict]:
+    # Compare dates, not datetimes: stored dates are "YYYY-MM-DD", and as strings
+    # "2026-10-04" < "2026-10-04T17:00..." would make anything due today look overdue.
+    today = datetime.now(TZ).date()
+    sql = "SELECT * FROM deadlines WHERE completed_at is NULL AND date < ? ORDER BY date"
+    with connect() as conn:
+        rows = conn.execute(sql, (today.isoformat(),)).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "course": r["course"],
+                "name": r["name"],
+                "kind": r["kind"],
+                "date": r["date"],
+                "weight": r["weight"],
+                "topics": r["topics"],
+                "days_overdue": (today - datetime.fromisoformat(r["date"]).date()).days,
+            }
+            for r in rows
+        ]

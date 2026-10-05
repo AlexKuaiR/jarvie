@@ -17,14 +17,20 @@ async def warmup():
 
 
 def briefing() -> str | None:
-    items = deadlines.upcoming(days=7)
-    if not items:
+    upcoming_items = deadlines.upcoming(days=7)
+    overdue_items = deadlines.overdue()
+    if not upcoming_items and not overdue_items:
         return None
-    return (
-        f"Upcoming this week: {json.dumps(items)}. "
-        "Mention at most the two most urgent in your greeting, briefly. "
-        "If the user acknowledges one, call mute_deadline."
-    )
+    parts = []
+    if overdue_items:
+        parts.append(f"Overdue and not marked done: {json.dumps(overdue_items)}. "
+                     "Ask briefly if the user finished them; if so, call complete_deadline.")
+    if upcoming_items:
+        parts.append(f"Upcoming this week: {json.dumps(upcoming_items)}. "
+                     "Mention at most the two most urgent in your greeting, briefly. "
+                     "If the user acknowledges one, call mute_deadline."
+        )
+    return " ".join(parts)
 
 
 async def get_events(params: FunctionCallParams, day_offset: int = 0):
@@ -61,11 +67,18 @@ async def get_deadlines(params: FunctionCallParams, days: int = 7):
     Always call it rather than guessing. Each item's id is what mute_deadline,
     update_deadline and complete_deadline need.
 
+    Items under "overdue" are past due and not marked complete. Mention them
+    and ask if the user finished; if so, call complete_deadline.
+
     Args:
         days: How many days ahead to look.
     """
-    out = deadlines.upcoming(days=days)
-    await params.result_callback({"found": bool(out), "items": out})
+    upcoming_items = deadlines.upcoming(days=days)
+    overdue_items = deadlines.overdue()
+
+    await params.result_callback({"found": bool(upcoming_items or overdue_items), 
+                                  "items": upcoming_items,
+                                  "overdue": overdue_items})
 
 
 async def add_deadlines(
@@ -184,6 +197,7 @@ async def update_deadline(
 
     ok = deadlines.update(item_id, **fields)
     await params.result_callback({"updated": ok})
+
 
 
 async def get_note(params: FunctionCallParams, status: str = "open", limit: int = 20):

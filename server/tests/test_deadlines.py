@@ -56,3 +56,16 @@ def test_update():
     with pytest.raises(ValueError):
         deadlines.update(new_id, completed_at="now")
     assert deadlines.update(new_id) is False
+
+
+def test_overdue_lists_past_incomplete_oldest_first():
+    old = deadlines.add(name="Old", date=in_days(-4))
+    recent = deadlines.add(name="Recent", date=in_days(-1))
+    deadlines.add(name="Today", date=in_days(0))
+    deadlines.add(name="Future", date=in_days(3))
+    done = deadlines.add(name="Done", date=in_days(-2))
+    deadlines.complete(done)
+
+    items = deadlines.overdue()
+    assert ids(items) == [old, recent]
+    assert [item["days_overdue"] for item in items] == [4, 1]

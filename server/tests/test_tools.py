@@ -70,11 +70,29 @@ def test_briefing_mentions_upcoming_item():
     assert "mute_deadline" in brief
 
 
+def test_briefing_mentions_overdue_item():
+    deadlines.add(name="Chem homework", date=in_days(-3))
+    brief = tools.briefing()
+    assert "Chem homework" in brief
+    assert "complete_deadline" in brief
+
+
+def test_briefing_asks_to_mention_upcoming_alongside_overdue():
+    # Regression: with both kinds present, only the overdue part told the model to
+    # speak, so the upcoming item was never brought up.
+    deadlines.add(name="Chem homework", date=in_days(-3))
+    deadlines.add(name="Data 88 project", date=in_days(5))
+    brief = tools.briefing()
+    assert "Chem homework" in brief
+    assert "Data 88 project" in brief
+    assert "Mention" in brief
+
+
 # --- deadline tools ----------------------------------------------------------
 
 
 def test_get_deadlines_empty():
-    assert call(tools.get_deadlines) == {"found": False, "items": []}
+    assert call(tools.get_deadlines) == {"found": False, "items": [], "overdue": []}
 
 
 def test_add_deadlines_then_get():
@@ -86,6 +104,29 @@ def test_add_deadlines_then_get():
     assert [(i["id"], i["name"], i["kind"]) for i in got["items"]] == [
         (result["id"], "Essay", "assignment")
     ]
+
+
+def test_get_deadlines_separates_overdue_from_upcoming():
+    late = deadlines.add(name="Chem homework", date=in_days(-2))
+    soon = deadlines.add(name="Essay", date=in_days(3))
+
+    got = call(tools.get_deadlines)
+    assert got["found"] is True
+    assert [i["id"] for i in got["items"]] == [soon]
+    assert [(i["id"], i["days_overdue"]) for i in got["overdue"]] == [(late, 2)]
+
+
+def test_get_deadlines_found_with_only_overdue():
+    deadlines.add(name="Chem homework", date=in_days(-1))
+    got = call(tools.get_deadlines)
+    assert got["found"] is True
+    assert got["items"] == []
+
+
+def test_complete_deadline_clears_overdue():
+    item_id = deadlines.add(name="Chem homework", date=in_days(-2))
+    assert call(tools.complete_deadline, item_id=item_id) == {"completed": True}
+    assert call(tools.get_deadlines)["overdue"] == []
 
 
 def test_add_deadlines_saves_prep_hours():
