@@ -9,6 +9,12 @@ ENV UV_LINK_MODE=copy
 # Uncomment if you wish to print a summary of the features available in the base image
 # ENV PCC_LOG_FEATURES_SUMMARY=true
 
+# PortAudio: the C library sounddevice wraps. Its macOS wheel bundles it, but on Linux
+# `import sounddevice` fails without it, so install it as a system package.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libportaudio2 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install the project's dependencies using the lockfile and settings
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
