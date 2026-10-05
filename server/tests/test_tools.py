@@ -68,6 +68,8 @@ def test_briefing_mentions_upcoming_item():
     brief = tools.briefing()
     assert "Midterm 1" in brief
     assert "mute_deadline" in brief
+    # Finishing an upcoming item should complete it, not just mute it.
+    assert "complete_deadline" in brief
 
 
 def test_briefing_mentions_overdue_item():

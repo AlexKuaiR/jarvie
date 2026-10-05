@@ -28,7 +28,8 @@ def briefing() -> str | None:
     if upcoming_items:
         parts.append(f"Upcoming this week: {json.dumps(upcoming_items)}. "
                      "Mention at most the two most urgent in your greeting, briefly. "
-                     "If the user acknowledges one, call mute_deadline."
+                     "If the user says they finished one, call complete_deadline; if they "
+                     "just acknowledge it, call mute_deadline."
         )
     return " ".join(parts)
 
