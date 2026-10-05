@@ -21,6 +21,13 @@ CREATE TABLE IF NOT EXISTS deadlines (
     topics TEXT,
     completed_at TEXT
 );
+CREATE TABLE IF NOT EXISTS dev_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT NOT NULL,
+    category TEXT DEFAULT 'feature',
+    created_at TEXT NOT NULL,
+    done_at TEXT
+);
 """
 
 

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import pytest
 from pipecat.processors.aggregators.llm_context import LLMContext
 
-from jarvie import calendar, deadlines, tools
+from jarvie import calendar, deadlines, note, tools
 from jarvie.config import TZ
 from jarvie.db import connect
 
@@ -49,6 +49,10 @@ def test_tool_schemas_required_fields():
         "complete_deadline": ["item_id"],
         "mute_deadline": ["item_id"],
         "update_deadline": ["item_id"],
+        "get_note": [],
+        "add_note": ["text"],
+        "update_note": ["item_id"],
+        "complete_note": ["item_id"],
     }
 
 
@@ -153,3 +157,16 @@ def test_get_events_reports_calendar_failure(monkeypatch):
     monkeypatch.setattr(calendar, "between", broken)
 
     assert call(tools.get_events) == {"found": False, "error": "Calendar unavailable."}
+
+
+def test_get_note_lists_open_notes():
+    new_id = note.add("log wake word misses")
+    result = call(tools.get_note)
+    assert result["found"] is True
+    assert [item["id"] for item in result["items"]] == [new_id]
+
+
+def test_get_note_bad_status_returns_error_instead_of_raising():
+    result = call(tools.get_note, status="pending")
+    assert "error" in result
+    assert "pending" in result["error"]

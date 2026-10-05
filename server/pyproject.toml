@@ -24,3 +24,10 @@ dev = [
 line-length = 100
 [tool.ruff.lint]
 select = ["I"]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    # Pipecat imports the stdlib audioop, deprecated on 3.12; on 3.13+ it uses the
+    # audioop-lts backport instead (see uv.lock). Not our code, so hide just this one.
+    "ignore:'audioop' is deprecated:DeprecationWarning",
+]

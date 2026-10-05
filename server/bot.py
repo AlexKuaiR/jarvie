@@ -86,7 +86,10 @@ async def run_bot(transport: BaseTransport):
             system_instruction=(
                 f"You are a helpful voice assistant. Today is {today}. "
                 "Your responses are spoken aloud, so avoid emojis, bullet points, and "
-                "other formatting that can't be spoken. Be brief."
+                "other formatting that can't be spoken. Be brief. "
+                "Tool results include ids; use them in later calls but never say them "
+                "out loud. After saving or changing something, confirm in a few words "
+                "instead of reading it back."
             ),
         ),
     )

@@ -5,7 +5,7 @@ from datetime import datetime, time, timedelta
 from loguru import logger
 from pipecat.services.llm_service import FunctionCallParams
 
-from . import calendar, deadlines
+from . import calendar, deadlines, note
 from .config import TZ
 
 
@@ -21,7 +21,7 @@ def briefing() -> str | None:
     if not items:
         return None
     return (
-        f"Upcoming this week: {json.dumps(items)}."
+        f"Upcoming this week: {json.dumps(items)}. "
         "Mention at most the two most urgent in your greeting, briefly. "
         "If the user acknowledges one, call mute_deadline."
     )
@@ -55,16 +55,14 @@ async def get_events(params: FunctionCallParams, day_offset: int = 0):
 
 
 async def get_deadlines(params: FunctionCallParams, days: int = 7):
-    """Get the user's upcoming exams, assignments, and application deadlines
+    """Get the user's upcoming exams, assignments, and application deadlines.
 
     Call this for any question about tests, due dates, or what's coming up academically.
-    Always call it rather than guessing.
-
-    Each item contains an id. You need the id to mute, update, or complete an item later,
-    so keep track of it, but never say it out loud.
+    Always call it rather than guessing. Each item's id is what mute_deadline,
+    update_deadline and complete_deadline need.
 
     Args:
-        days: how many days forward ahead to look. Defaults to 7.
+        days: How many days ahead to look.
     """
     out = deadlines.upcoming(days=days)
     await params.result_callback({"found": bool(out), "items": out})
@@ -86,13 +84,15 @@ async def add_deadlines(
     for example "I have a chem midterm on the 24th", "I have a chem homework due on the 20th".
 
     Resolve relative dates yourself using today's date from the system message. Never guess
-    a date, if the user is too vague, ask.
+    a date; if the user is too vague, ask. Only fill optional fields the user mentioned.
 
     Args:
         name: Short label, e.g. "Midterm 1".
         date: ISO 8601, "YYYY-MM-DD".
+        course: Course name or code, e.g. "CHEM 101".
         kind: "exam", "assignment", or "application".
         weight: Fraction of the course grade, e.g. 0.25 for 25%.
+        prep_hours_needed: The user's estimate of study hours needed.
         topics: What it covers, in the user's own words.
     """
 
@@ -113,10 +113,12 @@ async def mute_deadline(params: FunctionCallParams, item_id: int, days: int = 3)
 
     Call this when the user acknowledges an item — "got it", "I know about
     that one", "stop reminding me about the midterm".
-    To un-mute something, call this with days=0.
 
     Use the id from get_deadlines. If you don't have one, call get_deadlines
     first to find it.
+
+    Args:
+        days: How many days to stay quiet. Use 0 to un-mute.
     """
     ok = deadlines.mute(item_id, days)
     await params.result_callback({"muted": ok})
@@ -163,6 +165,8 @@ async def update_deadline(
 
     Args:
         date: ISO 8601, "YYYY-MM-DD".
+        kind: "exam", "assignment", or "application".
+        weight: Fraction of the course grade, e.g. 0.25 for 25%.
     """
     fields = {
         k: v
@@ -182,6 +186,100 @@ async def update_deadline(
     await params.result_callback({"updated": ok})
 
 
+async def get_note(params: FunctionCallParams, status: str = "open", limit: int = 20):
+    """Look up the user's dev notes: ideas, bugs and todos about Jarvie itself.
+
+    Call this when the user asks what's on their list for the project —
+    "what notes do I have", "what bugs did I log", "what have I finished".
+    These are notes about building Jarvie, not course deadlines; use
+    get_deadlines for those.
+
+    Newest notes come first. Each item has an id, text, category,
+    created_at and done_at (null while the note is still open).
+
+    Args:
+        status: "open" for unfinished notes (default), "done" for finished
+            ones, or "all" for both.
+        limit: Maximum number of notes to return.
+    """
+    try:
+        out = note.open_notes(status, limit)
+    except ValueError:
+        # Hand the error back to the model so it can retry, instead of crashing the call.
+        await params.result_callback(
+            {"error": f'unknown status "{status}"; use "open", "done" or "all"'}
+        )
+        return
+    await params.result_callback({"found": bool(out), "items": out})
+
+async def add_note(params: FunctionCallParams, 
+                   text: str, category: str = "feature"):
+    """Save a dev note about building Jarvie: an idea, a bug, or a todo.
+
+    Call this when the user wants to remember something about the project,
+    e.g. "note that the wake word missed me twice", "idea: read my Zotero
+    papers aloud". For exams, assignments or applications, use add_deadlines.
+
+    Use the user's own words, trimmed to a sentence or two, without adding
+    details. If they don't say what the note is, ask. Call once per note, and
+    don't re-save a note you just added.
+
+    Args:
+        text: The note, e.g. "Wake word misses when music is playing".
+        category: "bug" (something broken), "todo" (a concrete task), or
+            "feature" (an idea or improvement; use this if unclear).
+    """
+    new_id = note.add(
+        text=text,
+        category=category,
+    )
+    await params.result_callback({"added": True, "id": new_id, "text": text})
+    
+async def update_note(params: FunctionCallParams, item_id: int, text: str | None = None,
+                      category: str | None = None):
+    """Change the text or category of an existing dev note.
+
+    Call this when the user corrects or reclassifies a saved note, e.g.
+    "actually that wake word thing is a bug", "make the Zotero idea a todo".
+    For deadlines, use update_deadline.
+
+    Pass only the fields that are changing, at least one. Text replaces the
+    whole note, so write the full new version in the user's own words.
+
+    Use the id from get_note (finished notes only appear with status "all").
+    If it's unclear which note they mean, ask. If the result says it wasn't
+    updated, tell the user you couldn't find that note.
+
+    Args:
+        text: The full new note text.
+        category: "bug", "todo", or "feature".
+    """
+    fields = {
+        k: v
+        for k, v in {
+            "text": text,
+            "category": category
+        }.items()
+        if v is not None
+    }
+    ok = note.edit_notes(item_id, **fields)
+    await params.result_callback({"updated": ok})
+
+    
+async def complete_note(params: FunctionCallParams, item_id: int):
+    """Mark a dev note as done so it drops off the open list.
+
+    Call this when the user says a bug is fixed, a todo is finished, or an
+    idea is built, e.g. "I fixed the wake word bug", "mark the mute tests
+    done". For deadlines, use complete_deadline.
+
+    Use the id from get_note. If it's unclear which note they mean, ask. If
+    the result says it wasn't completed, tell the user you couldn't find
+    that note.
+    """
+    ok = note.complete_note(item_id)
+    await params.result_callback({"completed": ok})
+
 ALL_TOOLS = [
     get_events,
     get_deadlines,
@@ -189,4 +287,8 @@ ALL_TOOLS = [
     complete_deadline,
     mute_deadline,
     update_deadline,
+    get_note,
+    add_note,
+    update_note,
+    complete_note,
 ]
