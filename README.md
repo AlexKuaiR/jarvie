@@ -63,6 +63,8 @@ Requires [uv](https://docs.astral.sh/uv/) and Python 3.10+.
    cd server
    uv sync
    ```
+   On Linux, also install PortAudio for audio I/O: `sudo apt install libportaudio2`
+   (macOS and Windows get it bundled with `sounddevice`).
 
 2. **Set API keys** as environment variables, or in `server/.env` (git-ignored; start from
    `server/.env.example`):
