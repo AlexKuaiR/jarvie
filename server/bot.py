@@ -46,7 +46,6 @@ from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.daily.transport import DailyParams, DailyTransport
 from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
 from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
-from pipecat.turns.user_start import WakePhraseUserTurnStartStrategy
 from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
 from pipecat.turns.user_turn_strategies import (
     UserTurnStrategies,
@@ -55,6 +54,7 @@ from pipecat.turns.user_turn_strategies import (
 
 from jarvie.config import TZ
 from jarvie.tools import ALL_TOOLS, briefing, warmup
+from jarvie.wake import AwakeAtStartWakePhrase
 
 load_dotenv(override=True)
 
@@ -96,11 +96,17 @@ async def run_bot(transport: BaseTransport):
 
     context = LLMContext(messages=[], tools=ALL_TOOLS)
 
-    wake = WakePhraseUserTurnStartStrategy(phrases=["jarvis"], timeout=10.0)
+    # Starts awake so you can answer the greeting without "jarvis"; after `timeout`
+    # seconds of silence it goes back to needing the wake phrase.
+    wake = AwakeAtStartWakePhrase(phrases=["jarvis"], timeout=10.0)
 
     @wake.event_handler("on_wake_phrase_detected")
     async def on_wake(strategy, phrase):
         logger.info("WAKE: matched '{}'", phrase)
+
+    @wake.event_handler("on_wake_phrase_timeout")
+    async def on_wake_timeout(strategy):
+        logger.info("WAKE: timed out, say 'jarvis' to talk again")
 
     user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
         context,
