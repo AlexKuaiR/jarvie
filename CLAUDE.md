@@ -43,7 +43,7 @@ Planned (not built yet; move to Current as it becomes real):
 - Add a dependency: `cd server && uv add <package>` (ask first; this edits pyproject and uv.lock)
 
 ## Conventions
-- Python 3.10+ (`requires-python` in pyproject; the venv runs 3.12), type hints on public functions, small modules over big ones
+- Python 3.11+ (`requires-python` in pyproject; the venv runs 3.12), type hints on public functions, small modules over big ones
 - Every hardware touchpoint (GPIO, mic, sensors) goes behind an interface with a
   simulated implementation, so everything runs and tests on a laptop
 - Long-running processes: explicit config, structured logging, clean shutdown,

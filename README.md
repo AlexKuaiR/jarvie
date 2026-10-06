@@ -56,7 +56,7 @@ push, and no access to secrets, GPIO or deploys.
 
 ## Setup
 
-Requires [uv](https://docs.astral.sh/uv/) and Python 3.10+.
+Requires [uv](https://docs.astral.sh/uv/) and Python 3.11+.
 
 1. **Install dependencies**
    ```bash
