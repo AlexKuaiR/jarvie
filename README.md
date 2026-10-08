@@ -36,6 +36,29 @@ roadmap below.
   so only your voice wakes Jarvie and no audio leaves the room until it does. Also a GPIO-driven
   silent alarm (e.g. light or vibration instead of sound, so a roommate isn't woken).
 
+### Scalable tool selection (two-stage tool retrieval)
+Today every tool's full description (its docstring and argument schema) is sent to the LLM on every
+turn, roughly 1,500 tokens for the current ten tools. That cost grows linearly with each feature added, and a
+long tool list also makes it harder for the model to pick the right one. The plan is a
+**retrieve-then-select** pipeline, so the LLM only sees the tools relevant to what was just said:
+
+1. **Candidate retrieval (semantic search).** Each tool has a precomputed **embedding** of its
+   description, stored in a small vector index. The user's transcribed request is embedded with a
+   low-cost embedding model and compared against the index by **cosine similarity**, returning the
+   **top-k** (k = 10) candidate tools along with their similarity scores.
+2. **Compact tool summaries.** Each tool also carries a one-line summary (a "mini-docstring"). The
+   shortlisted candidates are passed to the LLM as these summaries together with their relevance
+   scores, which gives the model a cheap, high-signal overview of its options.
+3. **Selection with progressive disclosure.** The LLM loads the full docstring and schema only for
+   the candidates it is seriously considering, then makes the final tool call, using the
+   relevance scores from stage 1 as an additional signal alongside the full descriptions.
+
+The goal is to keep per-turn token usage, latency and API cost roughly constant as the number of
+tools grows, rather than reading every docstring on every call. Design points to settle: a fallback
+to the full tool list when retrieval confidence is low, a few always-available core tools that
+bypass retrieval, and an evaluation set of spoken requests to measure retrieval recall@k before
+switching it on.
+
 ### Claude Code integration (voice-driven development)
 A longer-term idea: update Jarvie itself by voice. You'd say something like *"Jarvis, add a tool
 that tells me when the library closes"*, and Jarvie would hand the request to
