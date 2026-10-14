@@ -64,10 +64,23 @@ def fake_livekit(calls: Counter, seen: dict) -> SimpleNamespace:
     def run_eval(cfg, path):
         return {"aut": 0.1, "fpph": 0.5, "recall": 0.9, "optimal_threshold": 0.4}
 
+    class Trainer:  # stand-in for livekit's WakeWordTrainer, used for warm starts
+        def __init__(self, cfg):
+            self.cfg = cfg
+            self.model = SimpleNamespace(load_state_dict=lambda state: seen.__setitem__("init_state", state))
+
+        def train(self):
+            calls["train", self.cfg.model_name] += 1
+            seen["warm_started", self.cfg.model_name] = "init_state" in seen
+
+        def save(self, path):
+            Path(path).write_bytes(b"fine-tuned")
+
     return SimpleNamespace(
         WakeWordConfig=Config, run_generate=run_generate, run_augment=run_augment,
         run_extraction=run_extraction, run_train=run_train, run_export=run_export,
-        run_eval=run_eval, augment_module=augment_module,
+        run_eval=run_eval, augment_module=augment_module, WakeWordTrainer=Trainer,
+        load_weights=lambda path: {"weights_from": str(path)},
     )
 
 
@@ -311,3 +324,135 @@ def test_incomplete_augmentation_is_redone(setup):
 
     make().run("A", models=["jarvie_wake"])
     assert calls["augment", "jarvie_wake"] == 2
+
+
+# --- GPU memory release between stages ---------------------------------------
+
+
+def test_release_gpu_memory_without_cuda():
+    wp.release_gpu_memory("test")  # no torch / no GPU here: must not fail
+
+
+def test_gpu_memory_released_after_each_stage_that_ran(setup, monkeypatch):
+    make, _, _, _ = setup
+    released = []
+    monkeypatch.setattr(wp, "release_gpu_memory", released.append)
+    pipe = make()
+    pipe.run("A")
+    assert released == [
+        "gen jarvie_wake", "aug jarvie_wake [A]", "train jarvie_wake [A/base]",
+        "gen jarvie_sleep", "aug jarvie_sleep [A]", "train jarvie_sleep [A/base]",
+    ]
+    released.clear()
+    pipe.run("A")  # everything cached: nothing ran, nothing to release
+    assert released == []
+
+
+def test_gpu_memory_released_even_when_a_stage_fails(setup, monkeypatch):
+    make, _, _, _ = setup
+    released = []
+    monkeypatch.setattr(wp, "release_gpu_memory", released.append)
+    pipe = make()
+    real_train = pipe.lk.run_train
+    pipe.lk.run_train = lambda cfg: (_ for _ in ()).throw(RuntimeError("CUDA out of memory"))
+    with pytest.raises(RuntimeError):
+        pipe.run("A", models=["jarvie_wake"])
+    pipe.lk.run_train = real_train
+    assert released[-1] == "train jarvie_wake [A/base]"
+
+
+# --- real recordings, synthetic share, warm start (M2-M4) ---------------------------------
+
+
+def add_real_recordings(root: Path, n: int = 3) -> None:
+    import soundfile as sf
+
+    t = np.arange(4 * 16000) / 16000
+    clip = (0.3 * np.sin(2 * np.pi * 220 * t) * ((t > 1) & (t < 2.2))).astype("float32")
+    for speaker, mode, kind in [("me", "wake", "pos"), ("me", "wake", "neg-very-similar"),
+                                ("me", "sleep", "pos")]:
+        folder = root / "real/uploads/v1" / speaker / mode
+        folder.mkdir(parents=True, exist_ok=True)
+        for i in range(n):
+            sf.write(folder / f"{kind}_desk_quiet-normal_{mode}_{i:03d}.wav", clip, 16000)
+
+
+def train_split(root: Path, model: str, label_glob: str, split: str) -> list[str]:
+    aug = [d for d in (root / "stages/aug").glob(f"{model}-*") if label_glob in (d / "settings.json").read_text()]
+    assert len(aug) == 1, aug
+    return sorted(p.name for p in (aug[0] / model / split).glob("clip_??????.wav"))
+
+
+def test_m2_adds_real_copies_and_reuses_speech(setup):
+    make, calls, _, root = setup
+    add_real_recordings(root)
+    pipe = make()
+    pipe.run("B")
+    pipe.run("B", real="v1", real_repeat=4)
+    assert count(calls, "generate") == 2  # speech reused
+    pos = train_split(root, "jarvie_wake", '"real": "v1"', "positive_train")
+    real_pos = [n for n in pos if n >= "clip_900000.wav"]
+    assert len(pos) - len(real_pos) == 30  # all synthetic clips
+    assert len(real_pos) == 3 * 4  # 3 wake positives x 4 copies
+    neg = train_split(root, "jarvie_wake", '"real": "v1"', "negative_train")
+    assert len([n for n in neg if n >= "clip_900000.wav"]) == (3 + 3) * 4  # near-misses + sleep phrases
+    assert (root / "models/jarvie_wake__B+real-v1__base.onnx").exists()
+
+
+def test_m3_real_only_keeps_synthetic_test_splits(setup):
+    make, _, _, root = setup
+    add_real_recordings(root)
+    make().run("B", real="v1", synthetic=False, real_repeat=2, models=["jarvie_wake"])
+    pos = train_split(root, "jarvie_wake", "synthetic_share", "positive_train")
+    assert pos and all(n >= "clip_900000.wav" for n in pos)  # no synthetic training clips
+    assert len(train_split(root, "jarvie_wake", "synthetic_share", "positive_test")) == 30  # validation kept
+    assert (root / "models/jarvie_wake__B+real-v1-nosyn__base.onnx").exists()
+
+
+def test_synthetic_share_keeps_a_fixed_fraction(setup):
+    make, _, _, root = setup
+    add_real_recordings(root)
+    make().run("B", real="v1", synthetic_share=0.2, real_repeat=1, models=["jarvie_wake"])
+    pos = train_split(root, "jarvie_wake", "synthetic_share", "positive_train")
+    assert len([n for n in pos if n < "clip_900000.wav"]) == 6  # 20% of 30
+
+
+def test_m4_fine_tunes_from_b(setup):
+    make, calls, seen, root = setup
+    add_real_recordings(root)
+    pipe = make()
+    with pytest.raises(RuntimeError, match="no finished training run"):
+        pipe.run("B", trial="ft", real="v1", init_from=("B", "base"), models=["jarvie_wake"])
+    pipe.run("B", models=["jarvie_wake"])
+    pipe.run("B", trial="ft", real="v1", synthetic_share=0.1, init_from=("B", "base"),
+             steps=50, models=["jarvie_wake"])
+    assert seen["warm_started", "jarvie_wake"] is True
+    assert "jarvie_wake.pt" in seen["init_state"]["weights_from"]
+    assert (root / "models/jarvie_wake__B+real-v1-syn10__ft.onnx").exists()
+
+
+def test_new_options_dont_change_existing_cache_keys(setup):
+    make, calls, _, root = setup
+    make().run("B")
+    make().run("B", real=None, synthetic=True)  # explicit defaults: same stages
+    assert count(calls, "augment") == 2 and count(calls, "train") == 2
+
+
+def test_adding_recordings_reruns_only_real_runs(setup):
+    make, calls, _, root = setup
+    add_real_recordings(root, n=2)
+    pipe = make()
+    pipe.run("B", models=["jarvie_wake"])
+    pipe.run("B", real="v1", real_repeat=1, models=["jarvie_wake"])
+    add_real_recordings(root, n=3)  # one more recording per label
+    pipe.run("B", models=["jarvie_wake"])
+    pipe.run("B", real="v1", real_repeat=1, models=["jarvie_wake"])
+    assert calls["augment", "jarvie_wake"] == 3  # B once, real run twice
+
+
+def test_bad_data_options(setup):
+    make, _, _, _ = setup
+    with pytest.raises(ValueError, match="needs real"):
+        make().run("B", synthetic=False)
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        make().run("B", synthetic_share=1.5)

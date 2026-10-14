@@ -1,0 +1,163 @@
+# What to say when recording your own wake-word data. Used by record_session.py.
+#
+# Each [section] has its labels in the header: kind (pos/neg), similarity tier for negatives,
+# pace, and which model it's for (mode = wake/sleep). Each line below is one take; text in
+# (parentheses) is HOW to say it, not something to say. "..." means a short natural pause.
+#
+# Suggested sessions (each about 10-15 min). Record most for training, and a smaller set on a
+# DIFFERENT DAY with --split test, so the test set never overlaps training:
+#   1. desk, quiet:   all wake-* and neg-* sections            (--position desk --condition quiet)
+#   2. far, quiet:    wake-normal, neg-very-similar, neg-similar (--position far  --condition quiet)
+#   3. desk, music:   wake-normal, wake-fast, neg-very-similar   (--position desk --condition music)
+#   4. bed, quiet:    wake-normal, wake-slow, sleep-*           (--position bed  --condition quiet)
+#   5. everyday speech: neg-everyday, once per position         (records several minutes in one go)
+# Use --repeats 2 on a section to say each line twice (it's fine if takes differ a little).
+# Keep "slow" takes under ~2 seconds: the model only sees the last ~2 s of a phrase.
+# Set macOS Mic Mode to Standard (Voice Isolation strips background noise).
+
+[wake-normal] kind=pos pace=normal mode=wake
+jarvie, wake up
+jarvie wake up (no pause)
+jarvie ... wake up (pause after the name)
+hey jarvie, wake up
+okay jarvie, wake up
+jarvie, wake up please
+jarvie, wake up (tired, quiet)
+jarvie, wake up (loud, across the room)
+jarvie, wake up? (questioning)
+jarvie, wake up! (urgent)
+jarvie, wake up (mumbled, like just woke up)
+jarvie, wake up (smiling / cheerful)
+jarvie, help me
+jarvie help me (no pause)
+hey jarvie, help me
+jarvie, help me please
+jarvie, help me (quiet)
+jarvie, help me? (questioning)
+jarvie, help me! (urgent)
+jarvie ... help me (pause after the name)
+jarvie, wakie wakie
+jarvie wakie wakie (no pause)
+hey jarvie, wakie wakie
+jarvie, wakie wakie (sing-song)
+jarvie, wakie wakie (quiet)
+jarvie ... wakie wakie (pause after the name)
+
+[wake-fast] kind=pos pace=fast mode=wake
+jarvie wake up (fast)
+jarvie, wake up (fast, clipped)
+hey jarvie wake up (fast)
+jarvie help me (fast)
+jarvie, help me (fast, urgent)
+jarvie wakie wakie (fast)
+jarvie, wakie wakie (fast, quiet)
+okay jarvie wake up (fast)
+
+[wake-slow] kind=pos pace=slow mode=wake
+jarvie, wake up (slow, drawn out, under 2 s)
+jaaarvie, wake up (stretch the name)
+jarvie, wake uuup (stretch the end)
+jarvie, help me (slow)
+jarvie, heeelp me (stretch "help")
+jarvie, wakie wakie (slow)
+jarvie, wake up (slow and sleepy)
+
+[sleep-normal] kind=pos pace=normal mode=sleep
+jarvie, go to sleep
+jarvie go to sleep (no pause)
+hey jarvie, go to sleep
+okay jarvie, go to sleep
+jarvie, go to sleep (tired, quiet)
+jarvie, go to sleep (firm)
+jarvie, go to sleep please
+jarvie ... go to sleep (pause after the name)
+jarvie, sleep now
+jarvie sleep now (no pause)
+jarvie, sleep now (quiet)
+jarvie, sleep now please
+
+[sleep-fast] kind=pos pace=fast mode=sleep
+jarvie go to sleep (fast)
+jarvie sleep now (fast)
+okay jarvie go to sleep (fast)
+
+[sleep-slow] kind=pos pace=slow mode=sleep
+jarvie, go to sleep (slow, under 2 s)
+jarvie, sleeep now (stretch "sleep")
+jarvie, go to sleep (slow and sleepy)
+
+# --- Negatives: things that must NOT wake it -------------------------------------------------
+# very-similar: one sound away from a wake phrase. These fix the false triggers you've seen.
+[neg-very-similar] kind=neg similarity=very-similar pace=normal mode=wake
+jacky, wake up
+jackie wake up (no pause)
+hey jacky, wake up
+harvey, wake up
+barbie, wake up
+marvie, wake up
+charlie, wake up
+carly, wake up
+davey, wake up
+jacky, help me
+harvey, help me
+garvey, help me
+jacky, wakie wakie
+harvey, wakie wakie
+jarvie, wait up
+jarvie, make up
+jarvie, break up
+jarvie, take up
+
+# Say these only if "Jarvis" should NOT wake Jarvie (the bot's current wake word is "jarvis";
+# skip this section if you'd rather accept both).
+[neg-jarvis] kind=neg similarity=very-similar pace=normal mode=wake
+jarvis, wake up
+jarvis wake up (no pause)
+hey jarvis, wake up
+jarvis, help me
+jarvis, wakie wakie
+
+# similar: partial phrases and the name without a command.
+[neg-similar] kind=neg similarity=similar pace=normal mode=wake
+wake up
+wake up, wake up
+come on, wake up
+time to wake up
+wakie wakie
+wakey wakey, eggs and bakey
+help me
+can you help me
+I need some help
+help me with this
+jarvie
+hey jarvie
+jarvie, never mind
+jarvie, what's up
+jarvie, are you there
+jarvie, what time is it
+jarvie, thank you
+okay, jarvie
+
+[neg-similar-fast] kind=neg similarity=similar pace=fast mode=wake
+wake up (fast)
+jacky wake up (fast)
+harvey wake up (fast)
+help me (fast)
+jarvie, what's up (fast)
+
+[neg-sleep-similar] kind=neg similarity=very-similar pace=normal mode=sleep
+jacky, go to sleep
+harvey, go to sleep
+jarvie, go to the store
+jarvie, go to school
+jarvie, slow down
+go to sleep
+time to sleep
+I need some sleep
+I'm going to sleep
+jarvie, keep going
+
+# everyday: ordinary speech with no wake phrase. Records several minutes in one take: read a
+# page of a book or article aloud, talk about your day, or have a call on speaker.
+[neg-everyday] kind=neg similarity=not-similar pace=normal mode=wake minutes=5
+(read aloud or talk normally for 5 minutes; avoid saying "jarvie")

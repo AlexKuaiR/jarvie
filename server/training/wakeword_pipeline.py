@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import contextlib
 import csv
+import gc
 import hashlib
 import json
 import os
@@ -91,6 +92,11 @@ limit_threads()
 
 import numpy as np  # noqa: E402  (after limit_threads, so numpy's thread pool is sized correctly)
 
+try:  # imported as training.wakeword_pipeline (tests) or as a plain module next to it (RunPod)
+    from . import real_data
+except ImportError:
+    import real_data  # type: ignore[no-redef]
+
 SPLITS = ["positive_train", "positive_test", "negative_train", "negative_test",
           "background_train", "background_test"]
 FEATURE_FILES = [
@@ -140,6 +146,7 @@ def _load_livekit() -> SimpleNamespace:
         run_train,
     )
     from livekit.wakeword.data import augment as augment_module
+    from livekit.wakeword.training.trainer import WakeWordTrainer
 
     cpus = available_cpus()
     # Feature extraction runs two tiny ONNX models once per clip; a few threads is fastest for
@@ -153,6 +160,8 @@ def _load_livekit() -> SimpleNamespace:
         WakeWordConfig=WakeWordConfig, run_generate=run_generate, run_augment=run_augment,
         run_extraction=lambda cfg: run_extraction(cfg, sess_options), run_train=run_train,
         run_export=run_export, run_eval=run_eval, augment_module=augment_module,
+        WakeWordTrainer=WakeWordTrainer,
+        load_weights=lambda path: torch.load(path, map_location="cpu"),
     )
 
 
@@ -224,6 +233,39 @@ def _augmentation_patch(augment_module, patch: dict | None) -> Iterator[None]:
         cls.apply_rir, cls.mix_with_background = original_rir, original_mix
 
 
+def release_gpu_memory(label: str) -> None:
+    """Free GPU memory left over from a stage that just ran, and report how much was freed.
+
+    Every stage runs in the same Python process, so the previous stage's model, optimizer and GPU
+    tensors can still be holding memory when the next one starts (jarvie_sleep's speech synthesis
+    ran out of memory right after jarvie_wake's training). gc.collect() frees objects that are
+    only kept alive by reference cycles; empty_cache() then hands PyTorch's freed blocks back to
+    the GPU. empty_cache() on its own only releases memory nothing is using anymore.
+    """
+    try:
+        import torch
+    except ImportError:  # no torch (e.g. the Mac test environment): nothing to free on a GPU
+        gc.collect()
+        return
+    if not torch.cuda.is_available():
+        gc.collect()
+        return
+    before = torch.cuda.memory_allocated() / 1e9
+    gc.collect()
+    torch.cuda.empty_cache()
+    after = torch.cuda.memory_allocated() / 1e9
+    print(f"  gpu   after {label}: {before:.1f} -> {after:.1f} GB allocated")
+
+
+@contextlib.contextmanager
+def _releasing_gpu(label: str) -> Iterator[None]:
+    """Run a stage's work, then release GPU memory even if it failed or was interrupted."""
+    try:
+        yield
+    finally:
+        release_gpu_memory(label)
+
+
 @dataclass
 class Pipeline:
     """Everything that defines a training run; edit the fields, then call run()."""
@@ -241,7 +283,7 @@ class Pipeline:
 
     def __post_init__(self) -> None:
         self.root = Path(self.root)
-        for d in ("noise/uploads", "stages", "models"):
+        for d in ("noise/uploads", "real/uploads", "stages", "models"):
             (self.root / d).mkdir(parents=True, exist_ok=True)
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -309,6 +351,22 @@ class Pipeline:
               f"{total_s / 60:.1f} min -> {dst}")
         return total_s / 60
 
+    def real_clips(self, name: str) -> list:
+        """Your recordings in real/uploads/<name>/<speaker>/<mode>/ (record_session.py --split train)."""
+        uploads = self.root / "real" / "uploads" / name
+        clips = real_data.collect(uploads)
+        if not clips:
+            raise RuntimeError(f"no recordings in {uploads}/<speaker>/<wake|sleep>/ "
+                               "(upload ~/jarvie-data/real/<name>/ from the Mac here)")
+        return clips
+
+    def prepare_real(self, name: str = "v1") -> dict:
+        """Check the uploaded recordings and print what's there, per speaker and label."""
+        counts = real_data.summary(self.real_clips(name))
+        for speaker, c in counts.items():
+            print(f"real {name!r}, speaker {speaker}: " + ", ".join(f"{k} {v}" for k, v in sorted(c.items())))
+        return counts
+
     # --- stages -----------------------------------------------------------
 
     def _config(self, model: str, output_dir: Path, augmentation: dict | None = None,
@@ -348,7 +406,8 @@ class Pipeline:
             return stage_dir, key
         print(f"  gen   {model}: running ({stage_dir.name})")
         started = time.time()
-        self.lk.run_generate(self._config(model, stage_dir))  # livekit resumes partial splits itself
+        with _releasing_gpu(f"gen {model}"):
+            self.lk.run_generate(self._config(model, stage_dir))  # livekit resumes partial splits
         self._finish(stage_dir, started)
         return stage_dir, key
 
@@ -364,19 +423,35 @@ class Pipeline:
                 out[name] = settings_key([(f.name, f.stat().st_size) for f in files])
         return out
 
-    def augment(self, model: str, variant: str, gen_dir: Path, gen_key: str) -> tuple[Path, str]:
+    def augment(self, model: str, variant: str, gen_dir: Path, gen_key: str,
+                data: dict | None = None, label: str | None = None) -> tuple[Path, str]:
+        """Augmentation + features. `data` (only set when it differs from the default of "all
+        synthetic, no real recordings") chooses the training clips; see run()."""
         spec = self.augmentations[variant]
+        label = label or variant
         settings = {"gen": gen_key, "variant": variant, **spec,
                     "noise": self._noise_fingerprint(spec["backgrounds"])}
+        real_clips: list = []
+        if data:
+            if data.get("real"):
+                real_clips = self.real_clips(data["real"])
+                data = {**data, "fingerprint": real_data.fingerprint(real_clips)}
+            settings["data"] = data
         stage_dir, model_dir, done = self._stage("aug", model, settings)
         key = settings_key(settings)
         if done:
-            print(f"  aug   {model} [{variant}]: cached ({stage_dir.name})")
+            print(f"  aug   {model} [{label}]: cached ({stage_dir.name})")
             return stage_dir, key
-        print(f"  aug   {model} [{variant}]: running ({stage_dir.name})")
+        print(f"  aug   {model} [{label}]: running ({stage_dir.name})")
         started = time.time()
         for split in SPLITS:
-            _link_files(gen_dir / model / split, model_dir / split, pattern=CLEAN_CLIP)
+            if data and split in ("positive_train", "negative_train"):
+                self._link_synthetic_share(gen_dir / model / split, model_dir / split,
+                                           data.get("synthetic_share", 1.0), seed=key)
+            else:  # test and background splits always stay synthetic (livekit's validation)
+                _link_files(gen_dir / model / split, model_dir / split, pattern=CLEAN_CLIP)
+        if real_clips:
+            self._add_real_copies(model, model_dir, real_clips, data, seed=key)
         augmentation = {"rounds": spec["rounds"],
                         "background_paths": self._background_dirs(spec["backgrounds"]),
                         "rir_paths": [str(self.data_dir / "rirs")]}
@@ -385,16 +460,44 @@ class Pipeline:
         # is only written after both. Record augmentation separately, so a stopped pod or an
         # interrupted cell doesn't redo it.
         augmented_marker = stage_dir / "_augmented.json"
-        if augmented_marker.exists() or self._augmentation_complete(model_dir, spec["rounds"]):
-            print(f"  aug   {model} [{variant}]: augmentation already complete, extracting features")
-        else:
-            with _augmentation_patch(self.lk.augment_module, spec.get("patch")):
-                self.lk.run_augment(cfg)
-        augmented_marker.write_text(json.dumps({"finished": time.strftime("%Y-%m-%d %H:%M:%S")}))
-        self.lk.run_extraction(cfg)
+        with _releasing_gpu(f"aug {model} [{label}]"):
+            if augmented_marker.exists() or self._augmentation_complete(model_dir, spec["rounds"]):
+                print(f"  aug   {model} [{label}]: augmentation already complete, extracting features")
+            else:
+                with _augmentation_patch(self.lk.augment_module, spec.get("patch")):
+                    self.lk.run_augment(cfg)
+            augmented_marker.write_text(json.dumps({"finished": time.strftime("%Y-%m-%d %H:%M:%S")}))
+            self.lk.run_extraction(cfg)
         self._prune_augmented_audio(model_dir)
         self._finish(stage_dir, started)
         return stage_dir, key
+
+    @staticmethod
+    def _link_synthetic_share(src: Path, dst: Path, share: float, seed: str) -> None:
+        """Link all (share=1), none (0) or a fixed random fraction of the synthetic clips."""
+        if share <= 0 or not src.exists():
+            dst.mkdir(parents=True, exist_ok=True)
+            return
+        names = sorted(p.name for p in src.iterdir() if CLEAN_CLIP.match(p.name))
+        if share < 1:
+            rng = random.Random(f"{seed}:{src.name}")
+            names = sorted(rng.sample(names, max(1, round(len(names) * share))))
+        _link_files(src, dst, names=names)
+
+    def _add_real_copies(self, model: str, model_dir: Path, clips: list, data: dict, seed: str) -> None:
+        """Trim your recordings to the training format and write `repeat` copies of each into the
+        training folders (each copy is then augmented differently)."""
+        mode = model.rsplit("_", 1)[-1]  # jarvie_wake -> wake, jarvie_sleep -> sleep
+        positives, negatives = real_data.training_roles(clips, mode)
+        repeat, speaker_aug = data.get("repeat", 20), data.get("speaker_aug", True)
+        end_pos, silent_pos = real_data.write_copies(positives, "pos", model_dir / "positive_train",
+                                                     repeat, speaker_aug, seed)
+        end_neg, silent_neg = real_data.write_copies(negatives, "neg", model_dir / "negative_train",
+                                                     repeat, speaker_aug, seed)
+        start = real_data.REAL_INDEX_START
+        print(f"  real  {model}: {len(positives)} positive and {len(negatives)} negative recordings -> "
+              f"{end_pos - start} + {end_neg - start} training clips"
+              + (f" ({silent_pos + silent_neg} without detectable speech skipped)" if silent_pos + silent_neg else ""))
 
     @staticmethod
     def _augmentation_complete(model_dir: Path, rounds: int) -> bool:
@@ -424,25 +527,62 @@ class Pipeline:
             for p in clips[self.keep_augmented_audio:]:
                 p.unlink()
 
+    def _trained_weights(self, model: str, label: str, trial: str) -> Path:
+        """The .pt of the most recent finished training run for (variant label, trial)."""
+        matches = []
+        for done in (self.root / "stages" / "train").glob(f"{model}-*/_done.json"):
+            info = json.loads(done.read_text())
+            if info.get("variant") == label and info.get("trial") == trial:
+                matches.append((info.get("finished", ""), done.parent / model / f"{model}.pt"))
+        if not matches:
+            raise RuntimeError(f"no finished training run for {model} [{label}/{trial}] to start from; "
+                               f"run pipe.run({label!r}, trial={trial!r}) first")
+        return max(matches)[1]
+
+    def _warm_start_train(self, cfg, init_weights: Path, model_dir: Path, model: str) -> None:
+        """livekit's training loop, but starting from existing weights instead of random ones.
+
+        WakeWordTrainer builds a fresh model in __init__ and trains it in train(); loading the
+        weights in between turns the same 3-phase schedule into fine-tuning.
+        """
+        trainer = self.lk.WakeWordTrainer(cfg)
+        try:
+            trainer.model.load_state_dict(self.lk.load_weights(init_weights))
+        except RuntimeError as e:  # different model_type / model_size
+            raise RuntimeError(f"can't start from {init_weights}: it has a different architecture "
+                               f"(keep model settings identical when fine-tuning). {e}") from e
+        trainer.train()
+        trainer.save(model_dir / f"{model}.pt")
+
     def train(self, model: str, variant: str, trial: str, aug_dir: Path, aug_key: str,
-              training: dict) -> dict:
+              training: dict, label: str | None = None, init_from: tuple[str, str] | None = None) -> dict:
+        label = label or variant
         settings = {"aug": aug_key, **training}
+        init_weights = None
+        if init_from:
+            init_weights = self._trained_weights(model, *init_from)
+            settings["init"] = init_weights.parent.parent.name  # that run's stage folder
         stage_dir, model_dir, done = self._stage("train", model, settings)
         if done:
-            print(f"  train {model} [{variant}/{trial}]: cached ({stage_dir.name})")
+            print(f"  train {model} [{label}/{trial}]: cached ({stage_dir.name})")
             return json.loads((stage_dir / "_done.json").read_text())
-        print(f"  train {model} [{variant}/{trial}]: running ({stage_dir.name})")
+        print(f"  train {model} [{label}/{trial}]: running ({stage_dir.name})"
+              + (f", starting from {init_from[0]}/{init_from[1]}" if init_from else ""))
         started = time.time()
         _link_files(aug_dir / model, model_dir, names=FEATURE_FILES)
         cfg = self._config(model, stage_dir, training=training)
         # Train, export and evaluate are resumable individually: a finished .pt isn't retrained.
-        if not (model_dir / f"{model}.pt").exists():
-            self.lk.run_train(cfg)
-        onnx_path = Path(self.lk.run_export(cfg))
-        metrics = self.lk.run_eval(cfg, onnx_path)
-        exported = self.root / "models" / f"{model}__{variant}__{trial}.onnx"
+        with _releasing_gpu(f"train {model} [{label}/{trial}]"):
+            if not (model_dir / f"{model}.pt").exists():
+                if init_weights:
+                    self._warm_start_train(cfg, init_weights, model_dir, model)
+                else:
+                    self.lk.run_train(cfg)
+            onnx_path = Path(self.lk.run_export(cfg))
+            metrics = self.lk.run_eval(cfg, onnx_path)
+        exported = self.root / "models" / f"{model}__{label}__{trial}.onnx"
         shutil.copy2(onnx_path, exported)
-        result = {"model": model, "variant": variant, "trial": trial, "onnx": str(exported),
+        result = {"model": model, "variant": label, "trial": trial, "onnx": str(exported),
                   **{k: v for k, v in metrics.items() if isinstance(v, (int, float))}}
         self._finish(stage_dir, started, result)
         self._append_result(result, training)
@@ -450,22 +590,57 @@ class Pipeline:
 
     # --- entry points -----------------------------------------------------
 
-    def run(self, variant: str, trial: str = "base", models: list[str] | None = None,
-            **training_overrides: Any) -> list[dict]:
+    def run(self, variant: str, trial: str = "base", models: list[str] | None = None, *,
+            real: str | None = None, real_repeat: int = 20, speaker_aug: bool = True,
+            synthetic: bool = True, synthetic_share: float | None = None,
+            init_from: tuple[str, str] | None = None, **training_overrides: Any) -> list[dict]:
         """Run (or reuse) every stage for one augmentation variant and one training trial.
 
-        Training overrides only rerun the training stage, e.g.
-            pipe.run("B", trial="lr3e-4", learning_rate=3e-4, steps=20000)
+        Training data (each option only reruns augmentation and training; speech is reused):
+            real="v1"            add your recordings from real/uploads/v1/ (M2)
+            real_repeat=20       copies per recording, each augmented differently
+            speaker_aug=True     speed-perturb copies so your voice also stands for other voices
+            synthetic=False      leave the synthetic clips out of training (M3, real-only)
+            synthetic_share=0.1  keep only this fraction of synthetic clips (e.g. M4's rehearsal set)
+        Training (only reruns training):
+            init_from=("B", "base")  fine-tune that finished model instead of training from scratch (M4)
+            any livekit training setting: steps=..., learning_rate=..., max_negative_weight=...
+
+        Examples:
+            pipe.run("B")                                              # M1 synthetic
+            pipe.run("B", real="v1")                                   # M2 synthetic + real
+            pipe.run("B", real="v1", synthetic=False)                  # M3 real only
+            pipe.run("B", trial="ft", real="v1", synthetic_share=0.1,  # M4 fine-tune B on real
+                     init_from=("B", "base"), steps=5000, learning_rate=1e-5)
         """
         if variant not in self.augmentations:
             raise KeyError(f"unknown variant {variant!r}; known: {', '.join(self.augmentations)}")
+        share = 0.0 if not synthetic else synthetic_share
+        if share is not None and not 0 <= share <= 1:
+            raise ValueError("synthetic_share must be between 0 and 1")
+        if real is None and share == 0:
+            raise ValueError("no training clips: synthetic=False needs real=...")
+
+        # Only non-default options go into the cache key, so existing runs stay cached.
+        data: dict = {}
+        if real:
+            data.update(real=real, repeat=real_repeat, speaker_aug=speaker_aug)
+        if share is not None and share < 1:
+            data["synthetic_share"] = share
+        label = variant + (f"+real-{real}" if real else "")
+        if share == 0:
+            label += "-nosyn"
+        elif share is not None and share < 1:
+            label += f"-syn{round(share * 100)}"
+
         training = {**self.training, **training_overrides}
         results = []
         for model in models or list(self.phrases):
-            print(f"=== {model}: variant {variant}, trial {trial} ===")
+            print(f"=== {model}: {label}, trial {trial} ===")
             gen_dir, gen_key = self.generate(model)
-            aug_dir, aug_key = self.augment(model, variant, gen_dir, gen_key)
-            results.append(self.train(model, variant, trial, aug_dir, aug_key, training))
+            aug_dir, aug_key = self.augment(model, variant, gen_dir, gen_key, data or None, label)
+            results.append(self.train(model, variant, trial, aug_dir, aug_key, training,
+                                      label=label, init_from=init_from))
         return results
 
     def _append_result(self, result: dict, training: dict) -> None:
