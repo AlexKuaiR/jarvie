@@ -59,19 +59,31 @@ def make_featurizer() -> Featurizer:
 
 
 def score_clip(
-    session, path: Path, input_name: str, window: int, hop: int, featurize: Featurizer
+    session, path: Path, input_name: str, window: int, hop: int, featurize: Featurizer,
+    pad_seconds: float = 1.0,
 ) -> dict:
     """Score one clip: max score, the per-window scores, and its duration in seconds.
 
     window and hop are in embedding frames (80 ms each): window=16, hop=1 scores the
     clip every 80 ms. Each embedding covers ~0.76 s of audio, so a 16-frame window spans
     ~1.96 s (0.76 + 15 x 0.08).
+
+    pad_seconds of silence are added before and after the clip, as livekit's own
+    predict_clip does. The model was trained with each phrase ending right at the end of its
+    window, so a phrase that ends at the very end of a recording otherwise has no room to line
+    up; padding also lets a phrase at the very start get a full window. The reported duration
+    is the unpadded clip's.
     """
     audio, sr = sf.read(path, dtype="float32")
     if sr != SR:
         raise ValueError(f"expected {SR} Hz audio, got {sr} Hz")
     if audio.ndim > 1:
         audio = audio.mean(axis=1)  # stereo -> mono
+
+    duration = len(audio) / sr
+    if pad_seconds > 0:
+        pad = np.zeros(int(pad_seconds * sr), dtype=audio.dtype)
+        audio = np.concatenate([pad, audio, pad])
 
     frames = featurize(audio)
     scores = []
@@ -84,11 +96,12 @@ def score_clip(
     return {
         "max": max(scores) if scores else 0.0,
         "scores": scores,
-        "duration": len(audio) / sr
+        "duration": duration,
     }
 
 def score_all(
-    session, audio_dir: Path, input_name: str, window: int, hop: int, featurize: Featurizer
+    session, audio_dir: Path, input_name: str, window: int, hop: int, featurize: Featurizer,
+    pad_seconds: float = 1.0,
 ) -> pd.DataFrame:
     """Score every wav in a directory. One row per file."""
     rows = []
@@ -100,7 +113,7 @@ def score_all(
             skipped.append(path.name)
             continue
         try:
-            result = score_clip(session, path, input_name, window, hop, featurize)
+            result = score_clip(session, path, input_name, window, hop, featurize, pad_seconds)
         except Exception as e:                      # bad sample rate, corrupt file
             skipped.append(f"{path.name} ({e})")
             continue

@@ -71,7 +71,7 @@ def test_score_clip_slides_window_over_whole_clip(tmp_path):
     session = FakeSession()
 
     result = wakeword.score_clip(
-        session, path, "audio", window=4, hop=2, featurize=identity_featurize
+        session, path, "audio", window=4, hop=2, featurize=identity_featurize, pad_seconds=0
     )
 
     assert result["scores"] == pytest.approx([0.15, 0.35, 0.55, 0.75])
@@ -83,7 +83,7 @@ def test_score_clip_slides_window_over_whole_clip(tmp_path):
 def test_score_clip_exactly_one_window_long(tmp_path):
     path = write_wav(tmp_path / "clip.wav", [0.5] * 4)
     result = wakeword.score_clip(
-        FakeSession(), path, "audio", window=4, hop=2, featurize=identity_featurize
+        FakeSession(), path, "audio", window=4, hop=2, featurize=identity_featurize, pad_seconds=0
     )
     assert result["scores"] == pytest.approx([0.5])
 
@@ -91,7 +91,7 @@ def test_score_clip_exactly_one_window_long(tmp_path):
 def test_score_clip_shorter_than_window(tmp_path):
     path = write_wav(tmp_path / "clip.wav", [0.5] * 3)
     result = wakeword.score_clip(
-        FakeSession(), path, "audio", window=4, hop=2, featurize=identity_featurize
+        FakeSession(), path, "audio", window=4, hop=2, featurize=identity_featurize, pad_seconds=0
     )
     assert result["scores"] == []
     assert result["max"] == 0.0
@@ -100,16 +100,28 @@ def test_score_clip_shorter_than_window(tmp_path):
 def test_score_clip_reports_duration_in_seconds(tmp_path):
     path = write_wav(tmp_path / "clip.wav", np.zeros(SR * 3))
     result = wakeword.score_clip(
-        FakeSession(), path, "audio", window=SR, hop=SR, featurize=identity_featurize
+        FakeSession(), path, "audio", window=SR, hop=SR, featurize=identity_featurize, pad_seconds=0
     )
     assert result["duration"] == pytest.approx(3.0)
+
+
+def test_score_clip_pads_with_silence_by_default(tmp_path):
+    # 1 s of silence on each side (as livekit's predict_clip does) adds windows before and after
+    # the clip, so a phrase at the very end can still line up with a window's end.
+    path = write_wav(tmp_path / "clip.wav", [0.8] * 8)
+    unpadded = wakeword.score_clip(FakeSession(), path, "audio", 4, 4, identity_featurize, pad_seconds=0)
+    padded = wakeword.score_clip(FakeSession(), path, "audio", 4, 4, identity_featurize)
+    assert len(unpadded["scores"]) == 2
+    assert len(padded["scores"]) == (SR + 8 + SR) // 4
+    assert padded["max"] == pytest.approx(0.8)  # the clip's own windows are still scored
+    assert padded["duration"] == unpadded["duration"] == pytest.approx(8 / SR)  # unpadded length
 
 
 def test_score_clip_rejects_wrong_sample_rate(tmp_path):
     path = tmp_path / "clip.wav"
     sf.write(path, np.zeros(8000, dtype=np.float32), 8000)
     with pytest.raises(ValueError, match="16000"):
-        wakeword.score_clip(FakeSession(), path, "audio", 4, 2, featurize=identity_featurize)
+        wakeword.score_clip(FakeSession(), path, "audio", 4, 2, featurize=identity_featurize, pad_seconds=0)
 
 
 MODEL = Path(__file__).resolve().parents[1] / "models" / "jarvie_wake.onnx"
@@ -142,7 +154,9 @@ def test_featurizer_matches_livekit_wakeword(tmp_path):
     path = write_wav(tmp_path / "tone.wav", audio)
 
     session, name, window = wakeword.load_model(MODEL)
-    ours = wakeword.score_clip(session, path, name, window, 1, featurize=wakeword.make_featurizer())
+    ours = wakeword.score_clip(
+        session, path, name, window, 1, featurize=wakeword.make_featurizer(), pad_seconds=0
+    )
 
     reference = WakeWordModel(models=[str(MODEL)])
     (theirs,) = reference.predict(audio.astype(np.float32)).values()
@@ -159,7 +173,7 @@ def test_score_all_parses_names_and_skips_malformed(tmp_path):
     write_wav(tmp_path / "badname.wav", [0.5] * 8)
 
     df = wakeword.score_all(
-        FakeSession(), tmp_path, "audio", window=4, hop=4, featurize=identity_featurize
+        FakeSession(), tmp_path, "audio", window=4, hop=4, featurize=identity_featurize, pad_seconds=0
     )
 
     assert list(df.file) == ["neg_far_loud_sleep_012.wav", "pos_desk_quiet_wake_001.wav"]
@@ -176,7 +190,7 @@ def test_score_all_parses_names_and_skips_malformed(tmp_path):
 
 def test_score_all_empty_folder(tmp_path):
     assert wakeword.score_all(
-        FakeSession(), tmp_path, "audio", window=4, hop=4, featurize=identity_featurize
+        FakeSession(), tmp_path, "audio", window=4, hop=4, featurize=identity_featurize, pad_seconds=0
     ).empty
 
 
