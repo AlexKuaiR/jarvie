@@ -16,6 +16,9 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "ipykernel>=7.4.0",
+    "livekit-wakeword>=0.3.0",
+    "matplotlib>=3.11.2",
     "onnxruntime>=1.23.2",
     "pandas>=2.3.3",
     "pyright>=1.1.404,<2",
