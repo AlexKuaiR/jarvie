@@ -27,7 +27,9 @@ Planned (not built yet; move to Current as it becomes real):
 - `server/bot.py`       Pipecat entrypoint (the voice pipeline)
 - `server/jarvie/`      Jarvie modules: `calendar` (Google Calendar), `deadlines`, `db`
                         (SQLite), `config` (timezone + `~/jarvie-data` paths), `tools`
-                        (LLM tools). Sleep, scheduler, literature and hardware modules are planned
+                        (LLM tools), `eval/` (wake-word model evaluation). Sleep, scheduler,
+                        literature and hardware modules are planned
+- `server/training/`    wake-word model training (livekit-wakeword on RunPod); see its README
 - `server/scratch/`     throwaway experiments; not production, don't import from it
 - `server/pyproject.toml`, `server/uv.lock`   dependencies, managed with uv
 - `server/Dockerfile`, `server/pcc-deploy.toml`   Pipecat Cloud deploy config
