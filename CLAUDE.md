@@ -58,7 +58,8 @@ Planned (not built yet; move to Current as it becomes real):
 - Format: `server/.venv/bin/ruff format server`
 - Run the bot: `cd server && uv run bot.py`
 - Add a dependency: `cd server && uv add <package>` (ask first; this edits pyproject and uv.lock)
-- Career/outreach (from `server/`): worker `.venv/bin/python -m jarvie.worker`, dashboard
+- Career/outreach (from `server/`): worker `.venv/bin/python -m jarvie.worker` (normally
+  auto-started when a job is queued, see `autostart.py`; tests keep that off), dashboard
   `.venv/bin/python -m jarvie.dashboard`, job boards without a model
   `.venv/bin/python -m jarvie.career.ingest`
 

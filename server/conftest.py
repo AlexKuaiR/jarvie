@@ -30,3 +30,9 @@ def no_real_cli_models(monkeypatch):
             raise LLMError("real CLI models are disabled in tests; pass a fake")
 
     monkeypatch.setattr(cli_models, "BACKENDS", {"claude-code": Blocked, "codex": Blocked})
+
+
+@pytest.fixture(autouse=True)
+def no_real_worker_autostart(monkeypatch):
+    """Queuing a job in a test must never start a real background worker."""
+    monkeypatch.setenv("JARVIE_WORKER_AUTOSTART", "0")

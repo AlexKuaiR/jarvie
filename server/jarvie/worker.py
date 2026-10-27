@@ -95,6 +95,9 @@ HANDLERS: dict[str, Handler] = {}
 USES_AI: dict[str, Callable[[dict], bool]] = {}
 # Things to do every loop besides jobs, e.g. send scheduled email. Each takes the context.
 TICKS: list[Callable[[WorkerContext], None]] = []
+# Checks that say "keep running" for an auto-started worker even with no jobs queued,
+# e.g. outreach emails scheduled to send later.
+BUSY_CHECKS: list[Callable[[], bool]] = []
 
 
 def handler(kind: str, uses_ai: Callable[[dict], bool] = lambda params: True):
@@ -194,11 +197,54 @@ def run_ticks(ctx: WorkerContext) -> None:
             logger.exception("tick {} failed", tick.__name__)
 
 
-def main() -> None:
+class Heartbeat:
+    """Writes the heartbeat every few seconds on its own thread, so it keeps beating
+    during a long job; the bot and dashboard read it to tell whether a worker is up."""
+
+    def __init__(self):
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        jobs.heartbeat()  # first beat before any work, so the bot sees it right away
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._run, name="heartbeat", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        """Stop beating and mark this worker gone, so new jobs start a fresh worker."""
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=2)
+        jobs.heartbeat(alive=False)
+
+    def _run(self) -> None:
+        while not self._stop.wait(jobs.HEARTBEAT_EVERY):
+            try:
+                jobs.heartbeat()
+            except sqlite3.Error as e:  # a locked database for a moment isn't fatal
+                logger.warning("heartbeat failed: {}", e)
+
+
+def busy() -> bool:
+    """Work is waiting: queued jobs (even ones paused for a limit or the budget), or
+    anything a feature registered in BUSY_CHECKS, like emails scheduled to send."""
+    _register_all()
+    return bool(jobs.queued()) or any(check() for check in BUSY_CHECKS)
+
+
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Run Jarvie's background jobs.")
     parser.add_argument("--once", action="store_true", help="run queued jobs, then exit")
     parser.add_argument("--poll", type=float, default=5.0, help="seconds between checks")
-    args = parser.parse_args()
+    parser.add_argument(
+        "--idle-exit",
+        type=float,
+        default=0,
+        metavar="SECONDS",
+        help="exit after this long with nothing to do (how auto-started workers run)",
+    )
+    args = parser.parse_args(argv)
 
     from dotenv import load_dotenv
 
@@ -209,31 +255,32 @@ def main() -> None:
     signal.signal(signal.SIGINT, lambda *_: stop.set())
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     logger.info("worker started (daily budget ${:.2f})", daily_budget())
-    # The heartbeat runs on its own thread so it keeps beating during a long job; the
-    # bot and dashboard read it to warn when jobs are queued with no worker running.
-    jobs.heartbeat()  # first beat before any work, so the bot sees it right away
-    beat = threading.Thread(target=_beat, args=(stop,), name="heartbeat", daemon=True)
+    beat = Heartbeat()
     beat.start()
+    idle_since = time.time()
     try:
         while not stop.is_set():
             run_pending(ctx, stop)
             run_ticks(ctx)
             if args.once:
                 break
+            if args.idle_exit:
+                if busy():
+                    idle_since = time.time()
+                elif time.time() - idle_since >= args.idle_exit:
+                    # Mark this worker gone first, then look once more: a job queued in
+                    # between either sees no worker and starts one, or is seen here.
+                    beat.stop()
+                    if not busy():
+                        logger.info("nothing to do for {:g}s; exiting", args.idle_exit)
+                        break
+                    beat.start()
+                    idle_since = time.time()
             stop.wait(args.poll)
     finally:
         stop.set()
-        beat.join(timeout=2)
-        jobs.heartbeat(alive=False)
+        beat.stop()
     logger.info("worker stopped")
-
-
-def _beat(stop: threading.Event) -> None:
-    while not stop.wait(jobs.HEARTBEAT_EVERY):
-        try:
-            jobs.heartbeat()
-        except sqlite3.Error as e:  # a locked database for a moment isn't fatal
-            logger.warning("heartbeat failed: {}", e)
 
 
 if __name__ == "__main__":

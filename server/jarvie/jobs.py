@@ -71,10 +71,15 @@ def enqueue(kind: str, params: dict | None = None) -> int:
     if kind not in KINDS:
         raise ValueError(f"kind must be one of {sorted(KINDS)}")
     with connect() as conn:
-        return conn.execute(
+        job_id = conn.execute(
             "INSERT INTO jobs (kind, params, created_at) VALUES (?, ?, ?)",
             (kind, dumps(params or {}), _now()),
         ).lastrowid
+    # Inserted first, so a worker that's about to go idle sees this job and stays.
+    from .autostart import ensure_worker
+
+    ensure_worker()
+    return job_id
 
 
 def get(job_id: int) -> dict | None:
@@ -187,6 +192,20 @@ def heartbeat(alive: bool = True) -> None:
         )
 
 
+def claim_start() -> bool:
+    """Atomically take the right to start a worker: True only if none is alive or
+    starting. It writes a fresh heartbeat, so a second caller a moment later gets False."""
+    now = time.time()
+    with connect() as conn:
+        cur = conn.execute(
+            """INSERT INTO worker_heartbeat (id, at) VALUES (1, ?)
+               ON CONFLICT (id) DO UPDATE SET at = excluded.at
+               WHERE worker_heartbeat.at IS NULL OR worker_heartbeat.at < ?""",
+            (now, now - HEARTBEAT_STALE),
+        )
+        return cur.rowcount > 0
+
+
 def worker_running() -> bool:
     with connect() as conn:
         r = conn.execute("SELECT at FROM worker_heartbeat WHERE id = 1").fetchone()
@@ -197,8 +216,16 @@ def worker_note() -> dict:
     """Extra fields for a tool result that queued a job: a warning if nothing will run it."""
     if worker_running():
         return {}
+    from .autostart import enabled
+
+    how = (
+        "it should start on its own in a moment; if it doesn't, check "
+        "~/jarvie-data/logs/worker.log or start it"
+        if enabled()
+        else "start it"
+    )
     return {
         "worker_running": False,
-        "tell_user": "The background worker isn't running, so this stays queued until "
-        f"you start it: {START_WORKER}",
+        "tell_user": f"The background worker isn't running, so this is queued; {how}: "
+        f"{START_WORKER}",
     }

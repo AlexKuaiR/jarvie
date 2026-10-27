@@ -217,9 +217,14 @@ Nothing is pushed.
   same checks; a call that fails validation gets one repair round. Runs take ~20s+ each, and
   usage counts against the same limits as your own Claude Code / ChatGPT use. Job costs show
   $0 because nothing is billed per call.
-- **The worker must be running for anything to happen.** Jarvie only queues jobs. The worker
-  writes a heartbeat every 10 seconds; when it's missing, Jarvie says so when it queues
-  something or reports status, and every dashboard page shows a banner with the start command.
+- **The worker starts itself.** Queuing a task (voice, text box or dashboard) starts a
+  background worker if none is alive; it exits after the queue has been empty for 60s
+  (`JARVIE_WORKER_IDLE_SECONDS`). It stays up while jobs wait on a plan limit or the daily
+  budget, and while approved emails are waiting to send. Replies are checked whenever it
+  runs, not around the clock. Its log is `~/jarvie-data/logs/worker.log`. Set
+  `JARVIE_WORKER_AUTOSTART=0` to run `python -m jarvie.worker` yourself (that one never
+  idles out unless you pass `--idle-exit`). A heartbeat every 10s tells the bot and
+  dashboard whether a worker is up; they warn if a job is queued and none starts.
 - **What you say in a search request replaces the profile's pre-filled answers** (e.g.
   "biotech" replaces your profile's field list). Company lists hold names only;
   descriptions like "promising startups" go to notes. Company names match loosely

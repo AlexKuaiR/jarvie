@@ -5,8 +5,8 @@ import time
 from loguru import logger
 
 from ..llm import Usage
-from ..worker import TICKS, WorkerContext, handler
-from . import research, sender, writer
+from ..worker import BUSY_CHECKS, TICKS, WorkerContext, handler
+from . import messages, research, sender, writer
 from .email_finder import EmailFinderError
 
 
@@ -50,3 +50,12 @@ def outreach_tick(ctx: WorkerContext) -> None:
 
 if outreach_tick not in TICKS:
     TICKS.append(outreach_tick)
+
+
+def emails_waiting() -> bool:
+    """Approved or scheduled emails still to send keep an auto-started worker running."""
+    return bool(messages.queue("approved") or messages.queue("scheduled"))
+
+
+if emails_waiting not in BUSY_CHECKS:
+    BUSY_CHECKS.append(emails_waiting)
