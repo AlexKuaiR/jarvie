@@ -201,3 +201,21 @@ def test_failed_jobs_can_be_retried_from_the_dashboard(profile_path):
     job = jobs.get(job_id)
     assert job["status"] == "queued" and job["error"] is None
     assert "a failed job" in web.post(f"/jobs/{job_id}/retry").text
+
+
+def test_every_page_shows_every_tab(profile_path):
+    web = TestClient(create_app())
+    tabs = [
+        "Postings",
+        "Pipeline",
+        "Documents",
+        "Compare",
+        "Searches",
+        "Jobs",
+        "Contacts",
+        "Outreach",
+    ]
+    for path in ("/", "/jobs", "/briefs", "/contacts", "/outreach", "/compare"):
+        page = web.get(path).text
+        nav = page[page.index("<nav>") : page.index("</nav>")]
+        assert all(f">{t}</a>" in nav for t in tabs), (path, nav)

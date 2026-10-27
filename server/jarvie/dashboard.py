@@ -71,7 +71,7 @@ def _display(value) -> str:
 
 
 def add_brief_and_job_routes(app: FastAPI) -> None:
-    NAV.append(("/briefs", "Searches"))
+    NAV.extend([("/briefs", "Searches"), ("/jobs", "Jobs")])
 
     @app.get("/briefs", response_class=HTMLResponse)
     def briefs_page(request: Request, error: str | None = None):
