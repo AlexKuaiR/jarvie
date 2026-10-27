@@ -30,6 +30,7 @@ async def list_postings(
     min_fit: float | None = None,
     sort: str = "fit",
     limit: int = 5,
+    query: str | None = None,
 ):
     """List saved internships and research positions.
 
@@ -37,7 +38,13 @@ async def list_postings(
     applied to". Read back company and title, a few at a time; ids are for later calls,
     never say them aloud.
 
+    When the user names a company or role ("the CACI one", "the Jane Street quant
+    internship"), pass it as query to find that posting. If several match, read their
+    titles back and ask which one. If none match, the name may have been misheard, so
+    try other spellings of it (e.g. "Casey" may be "CACI") before saying it isn't saved.
+
     Args:
+        query: Part of the company name or title, e.g. "caci" or "quant".
         kind: "internship" or "research".
         field: e.g. "machine learning", "software engineering", "biology", "biotech".
         status: "none" for ones not acted on yet, or interested, applied, oa,
@@ -47,7 +54,7 @@ async def list_postings(
         limit: How many to return.
     """
     try:
-        found = postings.search(kind, field, status, min_fit, sort, limit)
+        found = postings.search(kind, field, status, min_fit, sort, limit, query)
     except ValueError as e:
         await params.result_callback({"error": str(e)})
         return
@@ -109,7 +116,9 @@ async def set_application_status(
     """Record where an application stands.
 
     Call this when the user says "I applied to the Acme one", "got an OA from Acme",
-    "Acme rejected me", "I have an interview Friday" (note the date in note).
+    "Acme rejected me", "I have an interview Friday" (note the date in note). Find the
+    posting_id first with list_postings(query="Acme"); it works for any saved posting,
+    whether or not it has a status yet.
 
     Args:
         status: interested, applied, oa, interviewing, offer, rejected or withdrawn.

@@ -151,8 +151,12 @@ def search(
     min_fit: float | None = None,
     sort: str = "fit",
     limit: int = 50,
+    query: str | None = None,
 ) -> list[dict]:
-    """Postings matching every filter given. status "none" means not acted on yet."""
+    """Postings matching every filter given. status "none" means not acted on yet.
+
+    query matches part of the company or title, ignoring case ("caci", "quant").
+    """
     if sort not in SORTS:
         raise ValueError(f"sort must be one of {sorted(SORTS)}")
     sql = """SELECT postings.*, applications.status, applications.has_coffee_chat
@@ -171,6 +175,10 @@ def search(
     elif status:
         sql += " AND applications.status = ?"
         args.append(status)
+    if query and query.strip():
+        # LIKE ignores case for ASCII; % on both sides matches anywhere in the text.
+        sql += " AND (postings.company LIKE ? OR postings.title LIKE ?)"
+        args += [f"%{query.strip()}%"] * 2
     if min_fit is not None:
         sql += " AND fit_score >= ?"
         args.append(min_fit)

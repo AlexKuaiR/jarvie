@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block body %}
 <form method="get" style="margin-bottom:12px">
+  <input name="q" placeholder="company or title" value="{{ f.q or '' }}">
   <select name="kind"><option value="">any kind</option>
     {% for k in kinds %}<option {{ 'selected' if f.kind == k }}>{{ k }}</option>{% endfor %}</select>
   <input name="field" placeholder="field, e.g. biotech" value="{{ f.field or '' }}">

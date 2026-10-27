@@ -251,3 +251,21 @@ def test_dashboard_status_and_brief_forms(web):
 def test_dashboard_escapes_html(web):
     postings.save(company="<script>x</script>", title="Intern", source="web", url="https://a/2")
     assert "<script>x</script>" not in web.get("/").text
+
+
+def test_named_posting_is_found_among_many_unscored(profile_path):
+    # The bug: with many unscored postings, the top 5 didn't include the one named.
+    for i in range(20):
+        postings.save(company=f"Co{i}", title="SWE Intern", source="web", url=f"https://x/{i}")
+    a = postings.save(company="CACI", title="Software Engineer Intern", source="web", url="https://c/1")
+    b = postings.save(company="CACI", title="Software Dev Intern", source="web", url="https://c/2")
+    found = call(career_tools.list_postings, query="caci")["postings"]
+    assert {p["posting_id"] for p in found} == {a, b}
+    assert call(career_tools.set_application_status, posting_id=a, status="applied")["updated"]
+
+
+def test_dashboard_search_box(web):
+    postings.save(company="CACI", title="Software Engineer Intern", source="web", url="https://c/1")
+    postings.save(company="Acme", title="ML Intern", source="web", url="https://a/1")
+    page = web.get("/", params={"q": "caci"}).text
+    assert "Software Engineer Intern" in page and "ML Intern" not in page

@@ -105,3 +105,15 @@ def test_set_status_validates():
     with pytest.raises(ValueError):
         postings.set_status(999, "applied")
     assert postings.set_coffee_chat(pid) is False  # no application yet
+
+
+def test_search_by_company_or_title():
+    caci = add_posting(company="CACI", title="Software Engineer Intern", url="https://c/1")
+    caci2 = add_posting(company="CACI", title="Software Development Intern", url="https://c/2")
+    quant = add_posting(company="Jane Street", title="Quant Trading Intern", url="https://j/1")
+    add_posting()  # Acme
+    assert {p["id"] for p in postings.search(query="caci")} == {caci, caci2}
+    assert [p["id"] for p in postings.search(query="QUANT")] == [quant]  # title, any case
+    postings.set_status(caci, "applied")
+    assert [p["id"] for p in postings.search(query="caci", status="none")] == [caci2]
+    assert postings.search(query="  ") == postings.search()  # blank means no filter

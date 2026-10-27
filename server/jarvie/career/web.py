@@ -18,11 +18,20 @@ def add_routes(app: FastAPI) -> None:
         field: str | None = None,
         status: str | None = None,
         sort: str = "fit",
+        q: str | None = None,
         error: str | None = None,
     ):
-        f = {"kind": kind or None, "field": field or None, "status": status or None, "sort": sort}
+        f = {
+            "kind": kind or None,
+            "field": field or None,
+            "status": status or None,
+            "sort": sort,
+            "q": q or None,
+        }
         try:
-            items = postings.search(f["kind"], f["field"], f["status"], None, sort, limit=500)
+            items = postings.search(
+                f["kind"], f["field"], f["status"], None, sort, limit=500, query=f["q"]
+            )
         except ValueError as e:
             items, error = [], str(e)
         return render(
