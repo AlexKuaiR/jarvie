@@ -15,3 +15,10 @@ def discover_postings(job: dict, ctx: WorkerContext, spend: Usage) -> dict:
     return research_agent.discover_postings(
         job, ctx.get_agent(), ctx.get_profile(), spend, ctx.extra.get("http_client")
     )
+
+
+@handler("write_document")
+def write_document(job: dict, ctx: WorkerContext, spend: Usage) -> dict:
+    from . import documents
+
+    return documents.write_document(job, ctx.get_agent(), ctx.get_profile(), spend)

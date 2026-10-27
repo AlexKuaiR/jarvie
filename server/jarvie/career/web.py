@@ -3,12 +3,13 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 
+from .. import jobs
 from ..dashboard import NAV, back, render
-from . import postings
+from . import documents, postings
 
 
 def add_routes(app: FastAPI) -> None:
-    NAV.extend([("/", "Postings"), ("/pipeline", "Pipeline")])
+    NAV.extend([("/", "Postings"), ("/pipeline", "Pipeline"), ("/documents", "Documents")])
 
     @app.get("/", response_class=HTMLResponse)
     def postings_page(
@@ -47,6 +48,7 @@ def add_routes(app: FastAPI) -> None:
             "/",
             p=p,
             history=postings.history(posting_id),
+            docs=documents.for_posting(posting_id),
             statuses=postings.STATUSES,
             error=error,
         )
@@ -82,3 +84,35 @@ def add_routes(app: FastAPI) -> None:
             statuses=postings.STATUSES,
             by_status=by_status,
         )
+
+    @app.post("/postings/{posting_id}/documents")
+    async def write_document(posting_id: int, request: Request):
+        form = await request.form()
+        kind = str(form.get("kind", "cover_letter"))
+        question = str(form.get("question", "")).strip()
+        limit = str(form.get("word_limit", "")).strip()
+        if kind == "essay" and not question:
+            return back(f"/postings/{posting_id}", "an essay needs its prompt")
+        if limit and not limit.isdigit():
+            return back(f"/postings/{posting_id}", "word limit must be a number")
+        jobs.enqueue(
+            "write_document",
+            {
+                "posting_id": posting_id,
+                "kind": kind,
+                "question": question or None,
+                "word_limit": int(limit) if limit else None,
+            },
+        )
+        return back("/jobs")
+
+    @app.get("/documents", response_class=HTMLResponse)
+    def documents_page(request: Request):
+        return render(request, "documents.html", "/documents", items=documents.for_posting())
+
+    @app.get("/documents/{document_id}", response_class=HTMLResponse)
+    def document_page(request: Request, document_id: int):
+        d = documents.get(document_id)
+        if d is None:
+            return back("/documents", f"no document {document_id}")
+        return render(request, "document.html", "/documents", d=d, p=postings.get(d["posting_id"]))

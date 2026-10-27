@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block body %}
+<h2>{{ d.kind | replace("_", " ") }} v{{ d.version }} <span class="muted">· <a href="/postings/{{ p.id }}">{{ p.title }} at {{ p.company }}</a></span></h2>
+{% if d.question %}<p class="muted">Prompt: {{ d.question }}</p>{% endif %}
+{% if d.flagged %}<div class="flash">Check these claims against your resume before using this:<ul>{% for c in d.flagged %}<li>{{ c }}</li>{% endfor %}</ul></div>{% endif %}
+<textarea readonly style="min-height:420px">{{ d.text }}</textarea>
+<p class="muted">{{ d.text.split() | length }} words. Copy it into the application yourself; nothing is submitted.</p>
+{% if d.research_notes %}<h3>What the writer learned</h3><p class="muted">{{ d.research_notes }}</p>{% endif %}
+{% endblock %}

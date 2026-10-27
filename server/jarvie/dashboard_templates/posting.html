@@ -29,7 +29,13 @@
   <input type="hidden" name="had_chat" value="{{ 0 if p.has_coffee_chat else 1 }}">
   <button>{{ "Unmark coffee chat" if p.has_coffee_chat else "Mark coffee chat ☕" }}</button>
 </form>
-{% block posting_extra %}{% endblock %}
+<form method="post" action="/postings/{{ p.id }}/documents" style="margin-top:8px">
+  <select name="kind"><option value="cover_letter">cover letter</option><option value="essay">essay</option></select>
+  <input name="question" placeholder="essay prompt (essays only)" size="40">
+  <input name="word_limit" placeholder="word limit" size="8">
+  <button>Write with Claude</button>
+</form>
+{% if docs %}<h3>Documents</h3><ul>{% for d in docs %}<li><a href="/documents/{{ d.id }}">{{ d.kind }} v{{ d.version }}</a>{% if d.question %} <span class="muted">— {{ d.question[:60] }}</span>{% endif %}{% if d.flagged %} <span class="pill bad">{{ d.flagged | length }} flagged</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
 {% if history %}
 <h3>History</h3>
 <table>{% for e in history %}<tr><td>{{ e.at[:16] }}</td><td>{{ e.status }}</td><td class="muted">{{ e.note or "" }}</td></tr>{% endfor %}</table>

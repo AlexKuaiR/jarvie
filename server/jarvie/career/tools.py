@@ -125,7 +125,82 @@ async def add_posting(params: FunctionCallParams, url_or_text: str):
     await params.result_callback({"started": True, "job_id": job_id})
 
 
+async def write_cover_letter(params: FunctionCallParams, posting_id: int, notes: str | None = None):
+    """Have Claude write a tailored cover letter for a saved posting, in the background.
+
+    Call this for "write me a cover letter for the Acme internship". It appears on the
+    dashboard's Documents tab; claims not backed by the resume are flagged there.
+
+    Args:
+        notes: Anything the user wants emphasized, in their words.
+    """
+    job_id = jobs.enqueue(
+        "write_document", {"posting_id": posting_id, "kind": "cover_letter", "notes": notes or ""}
+    )
+    await params.result_callback({"started": True, "job_id": job_id})
+
+
+async def write_essay(
+    params: FunctionCallParams,
+    posting_id: int,
+    question: str,
+    word_limit: int | None = None,
+    notes: str | None = None,
+):
+    """Have Claude draft an application essay answering a specific prompt.
+
+    Call this for "help with Acme's 'why us' essay, 250 words". Long prompts are
+    usually typed; pass the prompt exactly as given.
+
+    Args:
+        question: The essay prompt, verbatim.
+        word_limit: The application's limit, if any.
+        notes: Points the user wants made.
+    """
+    job_id = jobs.enqueue(
+        "write_document",
+        {
+            "posting_id": posting_id,
+            "kind": "essay",
+            "question": question,
+            "word_limit": word_limit,
+            "notes": notes or "",
+        },
+    )
+    await params.result_callback({"started": True, "job_id": job_id})
+
+
+async def list_documents(params: FunctionCallParams, posting_id: int | None = None):
+    """Cover letters and essays written so far, newest first, without their full text.
+
+    Call this for "is my Acme cover letter ready?". Point the user to the dashboard to
+    read or copy them rather than reading a whole letter aloud.
+    """
+    from . import documents
+
+    items = documents.for_posting(posting_id)
+    await params.result_callback(
+        {
+            "documents": [
+                {
+                    "document_id": d["id"],
+                    "kind": d["kind"],
+                    "company": d["company"],
+                    "title": d["title"],
+                    "version": d["version"],
+                    "words": len(d["text"].split()),
+                    "flagged_claims": len(d["flagged"]),
+                }
+                for d in items[:10]
+            ]
+        }
+    )
+
+
 CAREER_TOOLS = [
+    write_cover_letter,
+    write_essay,
+    list_documents,
     list_postings,
     get_posting,
     set_application_status,

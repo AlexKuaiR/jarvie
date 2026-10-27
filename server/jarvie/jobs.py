@@ -17,6 +17,7 @@ from .storage import connect_with, dumps, loads
 KINDS = {
     "discover_postings": "career",
     "score_posting": "career",
+    "write_document": "career",
     "find_contacts": "outreach",
     "find_email": "outreach",
     "draft_outreach": "outreach",

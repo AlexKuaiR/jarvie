@@ -37,6 +37,18 @@ CREATE TABLE IF NOT EXISTS applications (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    posting_id INTEGER NOT NULL REFERENCES postings(id),
+    kind TEXT NOT NULL,             -- 'cover_letter' or 'essay'
+    question TEXT,                  -- the essay prompt (essays only)
+    version INTEGER NOT NULL,       -- 1, 2, ... per posting + kind + question
+    text TEXT NOT NULL,
+    flagged TEXT,                   -- JSON list: claims not found in your resume
+    research_notes TEXT,            -- what the writer learned about the company
+    created_at TEXT NOT NULL,
+    found_by_job INTEGER
+);
 CREATE TABLE IF NOT EXISTS status_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     application_id INTEGER NOT NULL REFERENCES applications(id),
