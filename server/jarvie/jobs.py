@@ -114,6 +114,15 @@ def claim(job_id: int) -> dict | None:
     return _decode(r) if r else None
 
 
+def requeue(job_id: int) -> None:
+    """Put a running job back in the queue (e.g. a plan limit was hit before it ran)."""
+    with connect() as conn:
+        conn.execute(
+            "UPDATE jobs SET status = 'queued', started_at = NULL WHERE id = ? AND status = 'running'",
+            (job_id,),
+        )
+
+
 def finish(
     job_id: int,
     result: dict,

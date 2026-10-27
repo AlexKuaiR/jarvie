@@ -228,6 +228,18 @@ def score_posting(
     return {"saved": log.saved, "errors": log.errors, "note": result.text[:500]}
 
 
+def scoring_prompt(chunk: list[dict], notes: str = "") -> str:
+    listing = "\n\n".join(
+        f"### posting_id {p['id']}: {p['title']} at {p['company']} ({p['location'] or 'location?'})\n"
+        f"url: {p['url']}\n{(p['raw_text'] or '')[:2500]}"
+        for p in chunk
+    )
+    return (
+        "Score each posting below and call save_posting once per posting with its "
+        f"posting_id. Extra notes from the user: {notes or 'none'}.\n\n{listing}"
+    )
+
+
 def score_saved(
     items: list[dict],
     model: AgentModel,
@@ -245,16 +257,7 @@ def score_saved(
     for start in range(0, len(items), 8):
         if spend.cost_usd >= budget:
             return True
-        chunk = items[start : start + 8]
-        listing = "\n\n".join(
-            f"### posting_id {p['id']}: {p['title']} at {p['company']} ({p['location'] or 'location?'})\n"
-            f"url: {p['url']}\n{(p['raw_text'] or '')[:2500]}"
-            for p in chunk
-        )
-        prompt = (
-            "Score each posting below and call save_posting once per posting with its "
-            f"posting_id. Extra notes from the user: {notes or 'none'}.\n\n{listing}"
-        )
+        prompt = scoring_prompt(items[start : start + 8], notes)
         result = model.run(
             system, prompt, [make_save_posting(log, job_id, "web", names)], web_search=4
         )

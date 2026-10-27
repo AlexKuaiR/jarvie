@@ -25,8 +25,10 @@ Current (exists in `server/`):
   `CAREER_SEND_ENABLED=1`)
 - Background work: `server/jarvie/worker.py` runs the `jobs` queue (`jobs.py`); searches start
   from briefs (`briefs.py`) answered by voice, the localhost text box, or the dashboard
-  (`dashboard.py`, http://localhost:7861). Claude calls go through `llm.py`; the voice model
-  stays OpenAI. Details and caveats: `server/jarvie/career/CAREER_PIPELINE.md`
+  (`dashboard.py`, http://localhost:7861). Background model calls go through `cli_models.py`
+  (Claude Code / Codex CLI on the user's subscriptions, the default) or `llm.py` (the
+  Anthropic API), chosen per job type in the profile's `[models]`; the voice model stays
+  OpenAI. Tests must never run the real `claude`/`codex` (conftest blocks them). Details and caveats: `server/jarvie/career/CAREER_PIPELINE.md`
 
 Planned (not built yet; move to Current as it becomes real):
 - Edge (Raspberry Pi): always-on local wake-word + speaker-ID pre-filter, GPIO silent alarm

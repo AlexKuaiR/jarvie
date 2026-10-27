@@ -9,7 +9,14 @@ from . import documents, postings, profile
 
 
 def add_routes(app: FastAPI) -> None:
-    NAV.extend([("/", "Postings"), ("/pipeline", "Pipeline"), ("/documents", "Documents")])
+    NAV.extend(
+        [
+            ("/", "Postings"),
+            ("/pipeline", "Pipeline"),
+            ("/documents", "Documents"),
+            ("/compare", "Compare"),
+        ]
+    )
 
     @app.get("/", response_class=HTMLResponse)
     def postings_page(
@@ -67,6 +74,21 @@ def add_routes(app: FastAPI) -> None:
             resumes=resumes,
             resume_used=resume_used,
             error=error,
+        )
+
+    @app.get("/compare", response_class=HTMLResponse)
+    def compare_page(request: Request, run: str | None = None):
+        from . import compare
+
+        past = compare.runs()
+        run = run or (past[0]["run_id"] if past else None)
+        return render(
+            request,
+            "compare.html",
+            "/compare",
+            past=past,
+            run=run,
+            t=compare.table(run) if run else None,
         )
 
     @app.post("/postings/{posting_id}/score")

@@ -13,13 +13,15 @@ import os
 import signal
 import sqlite3
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from loguru import logger
 
 from . import jobs
-from .llm import AgentModel, ClaudeAgent, ClaudeWriter, LLMError, Usage, WriterModel
+from .cli_models import SubscriptionLimit
+from .llm import AgentModel, LLMError, Usage, WriterModel
 
 
 @dataclass
@@ -29,21 +31,39 @@ class WorkerContext:
     Tests pass fakes for each part instead of the real Claude/Hunter/Gmail clients.
     """
 
-    agent: AgentModel | None = None
+    agent: AgentModel | None = None  # a fake here replaces every role (tests)
     writer: WriterModel | None = None
     email_finder: object | None = None
     mailer: object | None = None
     profile_loader: Callable | None = None
     extra: dict = field(default_factory=dict)
+    ai_paused_until: float = 0.0  # set when a plan's usage limit is hit
+    _models: dict = field(default_factory=dict)
 
-    def get_agent(self) -> AgentModel:
-        if self.agent is None:
-            self.agent = ClaudeAgent()
-        return self.agent
+    def _spec(self, role: str) -> str:
+        """The backend for a role from [models] in the profile (see cli_models.py)."""
+        from .cli_models import DEFAULT_SPECS
+
+        try:
+            return self.get_profile().models.get(role, DEFAULT_SPECS[role])
+        except ValueError:  # no profile (outreach on its own): use the defaults
+            return DEFAULT_SPECS[role]
+
+    def get_agent(self, role: str = "research") -> AgentModel:
+        """The model for research (scoring, searches, people) or documents (letters)."""
+        if self.agent is not None:
+            return self.agent
+        if role not in self._models:
+            from .cli_models import make_agent
+
+            self._models[role] = make_agent(self._spec(role))
+        return self._models[role]
 
     def get_writer(self) -> WriterModel:
         if self.writer is None:
-            self.writer = ClaudeWriter()
+            from .cli_models import make_writer
+
+            self.writer = make_writer(self._spec("writer"))
         return self.writer
 
     def get_profile(self):
@@ -96,6 +116,10 @@ def _register_all() -> None:
     from .outreach import worker_handlers as _o  # noqa: F401
 
 
+def limit_pause_minutes() -> float:
+    return float(os.getenv("JARVIE_LIMIT_PAUSE_MIN", "15"))
+
+
 def daily_budget() -> float:
     return float(os.getenv("JARVIE_DAILY_BUDGET_USD", "10.00"))
 
@@ -111,6 +135,13 @@ def run_one(job: dict, ctx: WorkerContext) -> None:
     log.info("job started")
     try:
         result = fn(job, ctx, spend)
+    except SubscriptionLimit as e:
+        # Not the job's fault: put it back and pause AI jobs until the limit resets.
+        pause = limit_pause_minutes()
+        log.warning("{}; job requeued, AI jobs paused {} min", e, pause)
+        jobs.requeue(job["id"])
+        ctx.ai_paused_until = time.time() + pause * 60
+        return
     except (LLMError, ValueError, LookupError, OSError) as e:
         # Expected failures (missing key, bad input, network): record and move on.
         log.warning("job failed: {}", e)
@@ -129,7 +160,9 @@ def run_pending(ctx: WorkerContext, stop: threading.Event | None = None) -> int:
     _register_all()
     done = 0
     while stop is None or not stop.is_set():
-        if jobs.spent_today() < daily_budget():
+        if time.time() < ctx.ai_paused_until:
+            job = _claim_free()  # waiting for a plan's limit to reset
+        elif jobs.spent_today() < daily_budget():
             job = jobs.claim_next()
         else:
             job = _claim_free()

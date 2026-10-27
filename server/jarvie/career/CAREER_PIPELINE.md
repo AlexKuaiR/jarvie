@@ -130,13 +130,26 @@ Nothing is pushed.
    - add `quant` to `fields` if you want quant roles
 2. **Each resume as text** at its `text` path, Markdown or `.txt`. The models read this
    version. Its `pdf` is what the apply assistant uploads; models don't read PDFs yet.
-3. **Keys in `server/.env`** (add them yourself):
-   - `ANTHROPIC_API_KEY`: research agent, writer, letters
+3. **Models.** By default the AI jobs run on your subscriptions, not the API, so they
+   cost nothing per job (`[models]` in the profile; copy it from the example):
+   - `research = "codex"`: scoring, searches and people finding on ChatGPT Plus (Codex CLI)
+   - `documents = "claude-code:opus"`: cover letters and essays on Claude Pro (Claude Code)
+   - `writer = "claude-code:sonnet"`: outreach emails
+   - Sign in once: run `codex` and `claude` in a terminal. `"api"` uses the Anthropic API
+     instead (needs `ANTHROPIC_API_KEY`). `"codex,claude-code:sonnet"` falls back to Claude
+     when ChatGPT's limit is hit.
+   - When a plan's limit is hit, the job goes back in the queue and AI jobs pause for 15
+     minutes (`JARVIE_LIMIT_PAUSE_MIN`); free jobs keep running.
+   - **Compare them on your postings:** `.venv/bin/python -m jarvie.career.compare --n 10`
+     scores the same postings with each backend without changing your saved scores; read
+     them side by side on the dashboard's Compare tab, then set `research` to the one you trust.
+4. **Keys in `server/.env`** (add them yourself):
+   - `ANTHROPIC_API_KEY`: only if a `[models]` entry is `"api"`
    - `HUNTER_API_KEY`: email lookup. The free tier is small (about 25 lookups a month).
-4. **Optional, for the apply assistant:** `cd server && uv sync --extra apply &&
+5. **Optional, for the apply assistant:** `cd server && uv sync --extra apply &&
    .venv/bin/playwright install chromium`. This downloads about 150 MB of browser into
    `~/Library/Caches/ms-playwright`.
-5. **Later, to send real email:**
+6. **Later, to send real email:**
    - Your Google Cloud OAuth client needs the Gmail API enabled, and the `gmail.send` and
      `gmail.readonly` scopes on its consent screen, with you as a test user.
    - Then run `.venv/bin/python -m jarvie.outreach.sender --auth` once. This creates
@@ -198,6 +211,12 @@ Nothing is pushed.
 - **Too many tools for the voice model:** it now has 31 tools (36 once `semantic-scholar` is
   merged). gpt-4.1 handles that, but tool choice and latency may get worse. The README's planned
   two-stage tool retrieval would help.
+- **Subscription backends:** each job runs `claude -p` or `codex exec` once, with web
+  search only (no shell, no file edits, empty temp folder, nothing saved). They can't call
+  Jarvie's tools mid-run, so they return the calls as JSON and Jarvie runs them through the
+  same checks; a call that fails validation gets one repair round. Runs take ~20s+ each, and
+  usage counts against the same limits as your own Claude Code / ChatGPT use. Job costs show
+  $0 because nothing is billed per call.
 - **The worker must be running for anything to happen.** Jarvie only queues jobs. The worker
   writes a heartbeat every 10 seconds; when it's missing, Jarvie says so when it queues
   something or reports status, and every dashboard page shows a banner with the start command.

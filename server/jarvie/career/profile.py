@@ -53,6 +53,8 @@ class CareerProfile:
     watchlist: dict[str, list[str]] = field(default_factory=dict)
     # Your details for signing emails and filling application forms ([applicant]).
     applicant: dict = field(default_factory=dict)
+    # Which model runs each kind of job ([models]); see jarvie/cli_models.py.
+    models: dict[str, str] = field(default_factory=dict)
 
     @property
     def name(self) -> str:
@@ -155,7 +157,23 @@ def load(path: Path | None = None) -> CareerProfile:
         dealbreakers=list(data.get("dealbreakers", [])),
         watchlist={k: list(v) for k, v in watchlist.items()},
         applicant=applicant,
+        models=_models(data.get("models", {})),
     )
+
+
+def _models(data: dict) -> dict[str, str]:
+    from ..cli_models import DEFAULT_SPECS, parse_spec
+
+    unknown = set(data) - set(DEFAULT_SPECS)
+    if unknown:
+        raise ProfileError(f"unknown [models] keys {sorted(unknown)}; use {sorted(DEFAULT_SPECS)}")
+    out = {**DEFAULT_SPECS, **data}
+    for role, spec in out.items():
+        try:
+            parse_spec(spec)
+        except ValueError as e:
+            raise ProfileError(f"[models] {role}: {e}") from e
+    return out
 
 
 def _resumes(data: dict, applicant: dict) -> tuple[dict[str, Resume], str]:
