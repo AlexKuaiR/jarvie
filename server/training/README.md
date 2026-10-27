@@ -13,6 +13,7 @@ transcript. They're for the planned Raspberry Pi edge detector.
 | `server/training/train_wakeword_runpod.ipynb` | The notebook to run on RunPod; all settings in cell 3 |
 | `server/training/monitor.py` | Terminal progress view of every stage, independent of the notebook |
 | `server/training/real_data.py` | Trims your recordings to the 2 s training format and writes oversampled copies |
+| `server/training/RECORDING_GUIDE.md` | **Start here for recording**: sessions, test days, other people, training, choosing models |
 | `server/training/record_session.py`, `recording_prompts.txt` | Guided recording of training/test clips from a prompt list |
 | `server/training/train_wakeword_colab.ipynb` | Earlier Colab version; superseded by the RunPod notebook |
 | `server/jarvie/eval/wakeword.py` | Scores recorded clips with a trained model; recall / false accepts / thresholds |

@@ -8,14 +8,17 @@ out by 20,000 synthetic clips.
 
 Expected upload layout (as record_session.py writes it, under --split train):
     <uploads>/<speaker>/<mode>/<kind>[-<similarity>]_<position>_<condition>-<pace>_<mode>_<NNN>.wav
-where mode is "wake" or "sleep" and kind is "pos" or "neg".
+    <uploads>/<speaker>/<mode>/manifest.csv   (what was said in each file)
+where mode is "wake" (stage 1), "sleep" or "name" (stage 2: "jarvie" alone) and kind is "pos" or "neg".
 """
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import random
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,6 +29,13 @@ CLIP_SECONDS = 2.0  # livekit's augmentation.clip_duration: 16 embeddings
 END_JITTER = 0.2  # livekit places positives 0-200 ms before the clip's end
 LONG_SECONDS = 6.0  # recordings longer than this are everyday speech, cut into many clips
 REAL_INDEX_START = 900_000  # clip_9NNNNN.wav: well above synthetic indices (< n_samples)
+MODES = ("wake", "sleep", "name")
+
+try:  # the single source of truth when the jarvie package is importable (the Mac, tests)
+    from jarvie.wake_phrases import JARVIE_SPELLINGS
+except ImportError:  # on RunPod only training/ is uploaded; keep in sync (a test checks it)
+    JARVIE_SPELLINGS = ["jarvie", "jarvy", "jarvey", "jarvee", "jarvi", "jervy", "jervie", "javi",
+                        "javy", "jarbi", "jarby"]
 
 
 @dataclass(frozen=True)
@@ -35,19 +45,40 @@ class RealClip:
     mode: str  # "wake" or "sleep": which phrase family it was recorded for
     kind: str  # "pos" or "neg"
     similarity: str  # "" for positives
+    text: str = ""  # what was said, from manifest.csv ("" if unknown)
+
+
+def _manifest_texts(folder: Path) -> dict[str, str]:
+    path = folder / "manifest.csv"
+    if not path.exists():
+        return {}
+    with path.open(newline="") as f:
+        return {row["file"]: row.get("text", "") for row in csv.DictReader(f)}
 
 
 def collect(uploads: Path) -> list[RealClip]:
-    """All recordings under <uploads>/<speaker>/<mode>/, labeled from their file names."""
-    clips = []
+    """All recordings under <uploads>/<speaker>/<mode>/, labeled from their file names, with the
+    spoken text from each folder's manifest.csv."""
+    clips, texts = [], {}
     for path in sorted(uploads.glob("*/*/*.wav")):
         speaker, mode = path.parent.parent.name, path.parent.name
         kind_field = path.stem.split("_")[0]
         kind, _, similarity = kind_field.partition("-")
-        if kind not in ("pos", "neg") or mode not in ("wake", "sleep"):
+        if kind not in ("pos", "neg") or mode not in MODES:
             continue
-        clips.append(RealClip(path, speaker, mode, kind, similarity))
+        if path.parent not in texts:
+            texts[path.parent] = _manifest_texts(path.parent)
+        clips.append(RealClip(path, speaker, mode, kind, similarity, texts[path.parent].get(path.name, "")))
     return clips
+
+
+def says_jarvie(text: str) -> bool:
+    """Whether the spoken text contains the name, in any accepted spelling. Delivery notes in
+    (parentheses) aren't spoken and are ignored."""
+    spoken = re.sub(r"\([^)]*\)", " ", text.lower())
+    spoken = re.sub(r"([a-z])\1{2,}", r"\1", spoken)  # stretched takes: "jaaarvie" -> "jarvie"
+    words = set(re.findall(r"[a-z']+", spoken))
+    return any(s in words for s in JARVIE_SPELLINGS)
 
 
 def fingerprint(clips: list[RealClip]) -> str:
@@ -67,10 +98,19 @@ def summary(clips: list[RealClip]) -> dict[str, dict[str, int]]:
 
 
 def training_roles(clips: list[RealClip], model_mode: str) -> tuple[list[RealClip], list[RealClip]]:
-    """(positives, negatives) for one model. The other model's phrases are negatives too, so
-    "jarvie, go to sleep" can't wake the bot, mirroring the synthetic cross-negatives."""
+    """(positives, negatives) for one model.
+
+    wake / sleep (stage 1): that phrase family's positives; everything else is a negative, so
+    "jarvie, go to sleep" can't wake the bot and "jarvie" alone can't start it either.
+    name (stage 2, "jarvie" alone): name positives; negatives are recordings that don't say the name.
+    Stage-1 phrases and negatives that do say it ("hey jarvie" as a stage-1 near-miss) are left
+    out: for the name model they're neither clearly yes nor clearly no.
+    """
     positives = [c for c in clips if c.mode == model_mode and c.kind == "pos"]
-    negatives = [c for c in clips if not (c.mode == model_mode and c.kind == "pos")]
+    if model_mode == "name":
+        negatives = [c for c in clips if c.kind == "neg" and not says_jarvie(c.text)]
+    else:
+        negatives = [c for c in clips if not (c.mode == model_mode and c.kind == "pos")]
     return positives, negatives
 
 

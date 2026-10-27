@@ -6,7 +6,7 @@ from jarvie.eval import gating
 
 @pytest.mark.parametrize(
     "transcript",
-    ["Jarvis, wake up!", "jarvy help me", "Hey Jarvie, wacky wacky.", "ok jarvis wake up now",
+    ["Jarvie, wake up!", "jarvy help me", "Hey Jarvie, wacky wacky.", "ok jarvee wake up now",
      "Jarvie, I need some help"],
 )
 def test_stage1_phrases_detected_with_stt_spellings(transcript):
@@ -16,7 +16,7 @@ def test_stage1_phrases_detected_with_stt_spellings(transcript):
 @pytest.mark.parametrize(
     "transcript",
     ["wake up", "Jarvis.", "Jacky, wake up.", "I need some help", "jarvis what's the weather",
-     "harvey help me", ""],
+     "harvey help me", "Jarvis, wake up!", "jarvis help me", ""],
 )
 def test_other_speech_not_detected(transcript):
     assert not gating.transcript_detects(transcript)
@@ -62,7 +62,7 @@ def test_accuracy_and_disagreements():
         "similarity": ["", "", "similar", "not-similar"],
         "max_score": [0.9, 0.1, 0.8, 0.0],
     })
-    transcripts = {"p1": "Jarvis, wake up.", "p2": "Jarvis wake up", "n1": "Jacky wake up", "n2": "hi"}
+    transcripts = {"p1": "Jarvie, wake up.", "p2": "Jarvie wake up", "n1": "Jacky wake up", "n2": "hi"}
     decisions = gating.compare_detections(clips, transcripts, threshold=0.5)
     table = gating.accuracy_table(decisions)
     assert table.loc["recall, all pace", "always_on"] == 1.0
@@ -120,12 +120,12 @@ def test_confirmation_filters_near_misses():
         "similarity": ["", "", "very-similar", "similar", "not-similar"],
         "max_score": [0.9, 0.95, 0.97, 0.96, 0.1],
     })
-    transcripts = {"p1": "Jarvie, wake up.", "p2": "Jarvis help me", "n_jacky": "Jacky, wake up.",
+    transcripts = {"p1": "Jarvie, wake up.", "p2": "Jarvy help me", "n_jacky": "Jacky, wake up.",
                    "n_jarvis": "Jarvis, wake up.", "n_quiet": "okay"}
     decisions = gating.compare_detections(clips, transcripts, threshold=0.5)
-    assert list(decisions.confirmed_fires) == [True, True, False, True, False]
+    assert list(decisions.confirmed_fires) == [True, True, False, False, False]
     est = gating.estimate_confirmation(decisions)
-    assert est == {"confirm_pass_rate": 0.5, "confirmed_recall": 1.0}  # jacky rejected, jarvis passes
+    assert est == {"confirm_pass_rate": 0.0, "confirmed_recall": 1.0}  # jacky and jarvis both rejected
     table = gating.accuracy_table(decisions)
     assert table.loc["false triggers, very-similar", "daemon_confirmed"] == 0.0
 
@@ -144,3 +144,13 @@ def test_confirmation_costs_by_hand():
     assert row.prompt_tokens == 3 * 1000 + 2 * 1000  # greetings for 2 real + 1 passed, 2 conversations
     assert row.false_activations == pytest.approx(1)
     assert gating.savings(a, "daemon_confirmed")["usd_per_day_saved"] > gating.savings(a)["usd_per_day_saved"]
+
+
+@pytest.mark.parametrize("transcript", ["Jarvie, are you up?", "hey jarvy are you up", "Jarvie... are you up"])
+def test_are_you_up_is_a_stage1_phrase(transcript):
+    assert gating.transcript_detects(transcript)
+
+
+@pytest.mark.parametrize("transcript", ["You up?", "Are you up?", "Jarvis, are you up?", "Jacky, are you up?"])
+def test_are_you_up_near_misses_are_not(transcript):
+    assert not gating.transcript_detects(transcript)

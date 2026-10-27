@@ -30,11 +30,11 @@ from pathlib import Path
 
 import pandas as pd
 
-# Stage-1 phrases, and how Deepgram might spell "jarvie" (it isn't a dictionary word). Matching is
-# done on a normalized transcript: lowercase, punctuation removed, spaces collapsed.
-STAGE1_PHRASES = ["jarvie wake up", "jarvie help me", "jarvie wakie wakie", "jarvie i need some help"]
-JARVIE_SPELLINGS = ["jarvie", "jarvis", "jarvy", "jarvey", "jarvee", "jervy", "jervie", "javi",
-                    "javy", "jarbi", "jarvi", "jarby"]
+from ..wake_phrases import JARVIE_SPELLINGS, STAGE1_PHRASES
+
+# Stage-1 phrases and the spellings Deepgram may use for "jarvie" (not a dictionary word) live in
+# jarvie/wake_phrases.py, shared with bot.py. "Jarvis" is not one of them: it must not wake Jarvie.
+# Matching is done on a normalized transcript: lowercase, punctuation removed, spaces collapsed.
 FOLLOW_WORD_SPELLINGS = {"wakie": ["wakie", "wakey", "wacky", "waky", "wake"]}
 
 

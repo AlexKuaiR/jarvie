@@ -8,12 +8,13 @@ against how packed your calendar is, and a **literature graph** built from your 
 its citations. Today Jarvie handles voice, your calendar and academic deadlines; the rest is on the
 roadmap below.
 
-> **Note:** voice activation currently only responds to **"Jarvis"**. The wake word will be updated
-> to match the project's new name, Jarvie, in a later release.
+> **Note:** while the bot is running, say **"Jarvie"** to talk to it ("Jarvis" deliberately doesn't
+> work). Starting the bot with a full phrase like "Jarvie, wake up" via an on-device wake-word daemon
+> is in progress (`server/training/`).
 
 ## What works today
 
-- **Voice conversation** with a spoken wake word ("Jarvis"). Deepgram speech-to-text → OpenAI
+- **Voice conversation** with a spoken wake word ("Jarvie"). Deepgram speech-to-text → OpenAI
   (`gpt-4.1` by default) → Cartesia text-to-speech, with Silero voice-activity detection and
   Pipecat's local smart-turn model deciding when you've finished speaking.
 - **Calendar**: "What do I have tomorrow?" reads your Google Calendar (read-only).
@@ -37,7 +38,7 @@ roadmap below.
   silent alarm (e.g. light or vibration instead of sound, so a roommate isn't woken).
 
 ### Claude Code integration (voice-driven development)
-A longer-term idea: update Jarvie itself by voice. You'd say something like *"Jarvis, add a tool
+A longer-term idea: update Jarvie itself by voice. You'd say something like *"Jarvie, add a tool
 that tells me when the library closes"*, and Jarvie would hand the request to
 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) running on this repo.
 
@@ -88,7 +89,7 @@ Requires [uv](https://docs.astral.sh/uv/) and Python 3.11+.
    uv run bot.py                     # SmallWebRTC, open the printed local URL
    uv run bot.py --transport daily   # Daily
    ```
-   Say "Jarvis" to start talking.
+   Say "Jarvie" to start talking.
 
 Local data (the deadlines database and Google credentials) lives in `~/jarvie-data/`, outside the
 repo.

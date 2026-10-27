@@ -102,3 +102,51 @@ def test_write_copies(tmp_path):
     end2, _ = rd.write_copies(neg, "neg", tmp_path / "neg", repeat=5, speaker_aug=False, seed="s")
     n_neg = len(list((tmp_path / "neg").glob("clip_*.wav")))
     assert n_neg == end2 - rd.REAL_INDEX_START and n_neg > 2 * 5
+
+
+def test_spellings_fallback_matches_the_shared_list():
+    # real_data.py keeps a copy for RunPod, where the jarvie package isn't uploaded.
+    import re
+    from pathlib import Path
+
+    from jarvie.wake_phrases import JARVIE_SPELLINGS
+
+    source = Path(rd.__file__).read_text()
+    fallback = re.search(r"except ImportError:.*?JARVIE_SPELLINGS = (\[.*?\])", source, re.S).group(1)
+    assert eval(fallback) == JARVIE_SPELLINGS
+
+
+def make_name_uploads(tmp_path):
+    up = tmp_path / "uploads"
+    rows = {
+        "me/name/pos_desk_quiet-normal_name_000.wav": "jarvie",
+        "me/name/neg-very-similar_desk_quiet-normal_name_000.wav": "jarvis",
+        "me/wake/pos_desk_quiet-normal_wake_000.wav": "jarvie, wake up",
+        "me/wake/neg-similar_desk_quiet-normal_wake_000.wav": "hey jarvie",
+        "me/wake/neg-very-similar_desk_quiet-normal_wake_001.wav": "jacky, wake up",
+    }
+    for rel, text in rows.items():
+        path = up / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        sf.write(path, phrase_clip(), SR)
+        manifest = path.parent / "manifest.csv"
+        new = not manifest.exists()
+        with manifest.open("a") as f:
+            if new:
+                f.write("file,text\n")
+            f.write(f'{path.name},"{text}"\n')
+    return up
+
+
+def test_name_model_roles(tmp_path):
+    clips = rd.collect(make_name_uploads(tmp_path))
+    assert {c.mode for c in clips} == {"name", "wake"}
+    assert next(c for c in clips if c.mode == "name" and c.kind == "pos").text == "jarvie"
+    pos, neg = rd.training_roles(clips, "name")
+    assert [c.text for c in pos] == ["jarvie"]
+    # negatives that don't say the name; "hey jarvie" and the stage-1 phrase are left out
+    assert sorted(c.text for c in neg) == ["jacky, wake up", "jarvis"]
+    # for stage 1, the name alone is a negative (it must not start the bot)
+    wake_pos, wake_neg = rd.training_roles(clips, "wake")
+    assert [c.text for c in wake_pos] == ["jarvie, wake up"]
+    assert "jarvie" in [c.text for c in wake_neg]

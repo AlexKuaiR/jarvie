@@ -86,3 +86,9 @@ def test_general_summary_weights_speakers_equally():
     general = compare.general_summary(scores)
     assert general.loc["m", "eer_normal"] == pytest.approx((0.0 + 0.5) / 2)  # mean over sam and kim
     assert compare.general_summary(scores[scores.speaker == "me"]).empty
+
+
+def test_discover_name_test_sets(tmp_path):
+    (tmp_path / "audio/name").mkdir(parents=True)
+    (tmp_path / "audio-speakers/sam/name").mkdir(parents=True)
+    assert set(compare.discover_test_sets("name", tmp_path)) == {"me", "sam"}

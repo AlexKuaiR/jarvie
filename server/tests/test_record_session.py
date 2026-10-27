@@ -89,3 +89,19 @@ def test_save_names_and_manifest(tmp_path):
     rows = list(csv.DictReader((tmp_path / "manifest.csv").open()))
     assert len(rows) == 2
     assert rows[0]["text"] == "jarvie, wake up" and rows[0]["speaker"] == "me"
+
+
+def test_name_sections_for_the_stage2_model():
+    from training.real_data import says_jarvie
+
+    sections = rs.parse_prompts(PROMPTS.read_text())
+    name = {n: s for n, s in sections.items() if s.mode == "name"}
+    assert {"name-normal", "name-fast", "name-slow", "neg-name-very-similar", "neg-name-similar"} <= set(name)
+    for s in name.values():
+        for line in s.lines:
+            # positives say the name (and nothing after it); negatives never do
+            assert says_jarvie(line) == (s.kind == "pos"), (s.name, line)
+    # "jarvis" appears only as something that must NOT trigger
+    for s in sections.values():
+        if any("jarvis" in line.lower() for line in s.lines):
+            assert s.kind == "neg", s.name

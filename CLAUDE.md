@@ -8,10 +8,11 @@ when making design tradeoffs.
 Current (exists in `server/`):
 - Voice layer: Pipecat cascade pipeline in `server/bot.py`: Deepgram STT → OpenAI LLM
   (`OPENAI_MODEL`, default `gpt-4.1`) → Cartesia TTS, with Silero VAD and local smart-turn v3
-- Wake word: server-side phrase match on the STT transcript ("jarvis",
-  `WakePhraseUserTurnStartStrategy`); transports are Daily or SmallWebRTC. The project is
-  named Jarvie, but the wake phrase is still "jarvis" until it's changed deliberately;
-  don't rename it as part of naming cleanups
+- Wake word: two stages, phrases in `server/jarvie/wake_phrases.py`. Stage 1 (a full phrase like
+  "jarvie, wake up") will start the bot via the planned local wake-word daemon; stage 2 ("jarvie"
+  alone, while the bot runs) is a server-side match on the STT transcript
+  (`WakePhraseUserTurnStartStrategy`, Deepgram keyterm "Jarvie"). "Jarvis" deliberately does not
+  wake it. Transports are Daily or SmallWebRTC
 - Tool layer: typed function-calling tools in `server/jarvie/tools.py` (`ALL_TOOLS`):
   Google Calendar events plus deadline add/list/update/mute/complete
 - Storage: SQLite at `~/jarvie-data/jarvie.db` (`server/jarvie/db.py`)
