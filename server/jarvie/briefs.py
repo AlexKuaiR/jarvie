@@ -56,7 +56,7 @@ QUESTIONS: dict[str, tuple[Question, ...]] = {
         Question(
             "fields",
             "Which fields this time? For example machine learning, software "
-            "engineering, biology, biotech.",
+            "engineering, quant, biology, biotech.",
             "list",
         ),
         Question("term", "Which term are you looking for, like Summer 2027?", "text"),
@@ -144,6 +144,13 @@ QUESTIONS: dict[str, tuple[Question, ...]] = {
             "bool",
             required=False,
             default=False,
+        ),
+        Question(
+            "resume",
+            "Which of your resumes should the emails draw on? Say default if it doesn't matter.",
+            "text",
+            required=False,
+            default="",
         ),
         Question(
             "notes",

@@ -123,6 +123,7 @@ async def draft_emails(
     purpose: str = "coffee_chat",
     notes: str | None = None,
     posting_id: int | None = None,
+    resume: str | None = None,
 ):
     """Have the writer draft personal emails to saved contacts, in the background.
 
@@ -135,6 +136,8 @@ async def draft_emails(
         purpose: coffee_chat, research_inquiry, referral, advice or other.
         notes: Anything the user wants mentioned, in their words.
         posting_id: A related saved posting, if any.
+        resume: Which of the user's resumes to draw on (e.g. "swe", "mle", "qr"), if
+            they say; otherwise the posting's resume or their default.
     """
     if purpose not in messages.PURPOSES:
         await params.result_callback({"error": f"purpose must be one of {messages.PURPOSES}"})
@@ -146,6 +149,7 @@ async def draft_emails(
             "purpose": purpose,
             "notes": notes or "",
             "posting_id": posting_id,
+            "resume": resume or "",
         },
     )
     await params.result_callback({"started": True, "job_id": job_id})

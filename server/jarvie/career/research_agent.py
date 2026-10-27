@@ -42,7 +42,7 @@ Only state facts the posting or a source you read supports; write "unknown" othe
 """
 
 
-def system_prompt(profile: CareerProfile, resume: str) -> list[dict]:
+def system_prompt(profile: CareerProfile) -> list[dict]:
     requirements = (
         f"Graduation: {profile.graduation:%B %Y} (window ±{profile.graduation_window_months} months)\n"
         f"Fields wanted: {', '.join(profile.fields)}\n"
@@ -59,8 +59,18 @@ def system_prompt(profile: CareerProfile, resume: str) -> list[dict]:
         "requirements. Use web_search sparingly, only to check prestige, ownership/IP "
         "terms or missing facts. Application process steps use these words: oa, "
         "interview, essays, cover_letter, referral, portfolio, transcript.\n\n"
-        f"{RUBRIC}\n## Candidate requirements\n{requirements}\n## Candidate resume\n{resume}"
+        f"{RUBRIC}\n## Candidate requirements\n{requirements}\n"
     )
+    if len(profile.resumes) == 1:
+        stable += f"## Candidate resume\n{profile.resume_text()}"
+    else:
+        # Several resumes (e.g. swe, mle, qr): score fit against the one the student would
+        # send, and record which, so cover letters and the apply assistant use it too.
+        stable += (
+            "## Candidate resumes\nThe student has one resume per kind of role. Judge fit "
+            "against the resume that best matches each posting, and pass its name as "
+            "`resume` to save_posting.\n\n" + profile.labeled_resumes()
+        )
     return cached_system(stable)
 
 
@@ -70,7 +80,9 @@ class SaveLog:
     errors: list[str] = field(default_factory=list)
 
 
-def make_save_posting(log: SaveLog, job_id: int | None, source: str):
+def make_save_posting(
+    log: SaveLog, job_id: int | None, source: str, resume_names: tuple[str, ...] = ()
+):
     """Build the save_posting tool the agent calls; it writes through postings.save()."""
 
     def save_posting(
@@ -96,6 +108,7 @@ def make_save_posting(log: SaveLog, job_id: int | None, source: str):
         fit_score: float | None = None,
         fit_reasons: str | None = None,
         ats: str | None = None,
+        resume: str | None = None,
     ) -> str:
         """Save or update one posting with your scores. Call once per posting.
 
@@ -107,7 +120,7 @@ def make_save_posting(log: SaveLog, job_id: int | None, source: str):
             kind: "internship" or "research".
             location: As written, e.g. "Berkeley, CA" or "Remote".
             deadline: "YYYY-MM-DD", or null if not stated.
-            fields: From: machine learning, software engineering, biology, biotech.
+            fields: From: machine learning, software engineering, biology, biotech, quant.
             paid: true, false, or null if not stated.
             pay: Pay as written, e.g. "$45/hr".
             grad_window: Graduation dates accepted, as written.
@@ -122,6 +135,7 @@ def make_save_posting(log: SaveLog, job_id: int | None, source: str):
             fit_score: 0 to 1.
             fit_reasons: Two or three sentences on fit, naming any dealbreaker.
             ats: How you apply: greenhouse, lever, ashby, workday, handshake, email, other.
+            resume: Name of the student's resume you judged fit against (if they have several).
         """
         values = {
             k: v
@@ -150,6 +164,8 @@ def make_save_posting(log: SaveLog, job_id: int | None, source: str):
         }
         if fit_score is not None and not 0 <= fit_score <= 1:
             return "error: fit_score must be between 0 and 1"
+        if resume is not None and resume not in resume_names:
+            return f"error: resume must be one of {', '.join(resume_names) or 'none'}"
         try:
             if posting_id is not None:
                 values.pop("url", None)  # keep the URL the posting was saved with
@@ -161,6 +177,8 @@ def make_save_posting(log: SaveLog, job_id: int | None, source: str):
         except ValueError as e:
             log.errors.append(str(e))
             return f"error: {e}"
+        if resume is not None and len(resume_names) > 1:
+            postings.set_resume(pid, resume, only_if_unset=True)  # never override your pick
         log.saved.append(pid)
         return f"saved posting {pid}"
 
@@ -188,9 +206,9 @@ def score_posting(job: dict, model: AgentModel, profile: CareerProfile, spend: U
     else:
         raise ValueError("score_posting needs a url or text")
     result = model.run(
-        system_prompt(profile, profile.resume_text()),
+        system_prompt(profile),
         prompt,
-        [make_save_posting(log, job["id"], source)],
+        [make_save_posting(log, job["id"], source, tuple(profile.resumes))],
         web_search=3,
         web_fetch=fetches,
     )
@@ -214,7 +232,8 @@ def discover_postings(
         ingest(profile, criteria, http_client, max_results=max_results, job_id=job["id"])
     )
 
-    system = system_prompt(profile, profile.resume_text())
+    system = system_prompt(profile)
+    names = tuple(profile.resumes)
     log = SaveLog()
     budget = _budget()
     stopped_early = False
@@ -235,7 +254,9 @@ def discover_postings(
             "posting_id. Extra notes from the user for this search: "
             f"{params.get('notes') or 'none'}.\n\n{listing}"
         )
-        result = model.run(system, prompt, [make_save_posting(log, job["id"], "web")], web_search=4)
+        result = model.run(
+            system, prompt, [make_save_posting(log, job["id"], "web", names)], web_search=4
+        )
         spend.add(result.usage)
 
     if "research" in criteria.kinds and spend.cost_usd < budget and not params.get("skip_web"):
@@ -248,7 +269,11 @@ def discover_postings(
             "(kind research, with its url); at most 8. Skip anything you can't verify is open."
         )
         result = model.run(
-            system, prompt, [make_save_posting(log, job["id"], "web")], web_search=8, web_fetch=6
+            system,
+            prompt,
+            [make_save_posting(log, job["id"], "web", names)],
+            web_search=8,
+            web_fetch=6,
         )
         spend.add(result.usage)
     elif "research" in criteria.kinds:

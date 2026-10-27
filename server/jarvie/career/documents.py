@@ -143,7 +143,8 @@ def write_document(job: dict, agent: AgentModel, profile: CareerProfile, spend: 
     if kind == "essay" and not question:
         raise ValueError("an essay needs the prompt (question)")
     word_limit = p.get("word_limit")
-    resume = profile.resume_text()
+    chosen = profile.resume_for(posting)  # the swe/mle/qr resume this posting uses
+    resume = chosen.text()
     log = DocLog()
 
     def save_document(text: str, claims_about_student: list[str], research_notes: str = "") -> str:
@@ -186,4 +187,9 @@ def write_document(job: dict, agent: AgentModel, profile: CareerProfile, spend: 
     if not log.saved:
         raise ValueError(f"the writer didn't save a document: {result.text[:300]}")
     doc = get(log.saved[-1])
-    return {"document_id": doc["id"], "version": doc["version"], "flagged": doc["flagged"]}
+    return {
+        "document_id": doc["id"],
+        "version": doc["version"],
+        "flagged": doc["flagged"],
+        "resume": chosen.name,
+    }

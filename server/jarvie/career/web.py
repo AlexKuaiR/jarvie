@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse
 
 from .. import jobs
 from ..dashboard import NAV, back, render
-from . import documents, postings
+from . import documents, postings, profile
 
 
 def add_routes(app: FastAPI) -> None:
@@ -42,6 +42,11 @@ def add_routes(app: FastAPI) -> None:
         p = postings.get(posting_id)
         if p is None:
             return back("/", f"no posting {posting_id}")
+        try:
+            prof = profile.load()
+            resumes, resume_used = list(prof.resumes), prof.resume_for(p).name
+        except profile.ProfileError:
+            resumes, resume_used = [], None
         return render(
             request,
             "posting.html",
@@ -50,8 +55,21 @@ def add_routes(app: FastAPI) -> None:
             history=postings.history(posting_id),
             docs=documents.for_posting(posting_id),
             statuses=postings.STATUSES,
+            resumes=resumes,
+            resume_used=resume_used,
             error=error,
         )
+
+    @app.post("/postings/{posting_id}/resume")
+    async def set_resume(posting_id: int, request: Request):
+        form = await request.form()
+        name = str(form.get("resume", ""))
+        try:
+            name = None if name == "auto" else profile.load().resume(name).name
+        except profile.ProfileError as e:
+            return back(f"/postings/{posting_id}", str(e))
+        postings.set_resume(posting_id, name)
+        return back(f"/postings/{posting_id}")
 
     @app.post("/postings/{posting_id}/status")
     async def set_status(posting_id: int, request: Request):

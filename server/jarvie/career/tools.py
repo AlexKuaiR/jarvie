@@ -66,7 +66,41 @@ async def get_posting(params: FunctionCallParams, posting_id: int):
         return
     p = {k: v for k, v in p.items() if k != "raw_text"}
     p["history"] = postings.history(posting_id)
+    p["resume_used"] = _resume_used(p)
     await params.result_callback({"found": True, "posting": p})
+
+
+def _resume_used(p: dict) -> str | None:
+    from .profile import ProfileError, load
+
+    try:
+        return load().resume_for(p).name
+    except ProfileError:
+        return None
+
+
+async def set_posting_resume(params: FunctionCallParams, posting_id: int, resume: str):
+    """Choose which of the user's resumes a posting uses (for cover letters, essays and
+    the apply assistant).
+
+    Call this for "use my QR resume for the Citadel one". Say "auto" to go back to
+    picking by the posting's fields.
+
+    Args:
+        resume: The resume's name from the profile, e.g. "swe", "mle", "qr", or "auto".
+    """
+    from .profile import ProfileError, load
+
+    if postings.get(posting_id) is None:
+        await params.result_callback({"error": f"no posting {posting_id}"})
+        return
+    try:
+        name = None if resume.strip().lower() == "auto" else load().resume(resume).name
+    except ProfileError as e:
+        await params.result_callback({"error": str(e)})
+        return
+    postings.set_resume(posting_id, name)
+    await params.result_callback({"updated": True, "resume": name or "auto"})
 
 
 async def set_application_status(
@@ -203,6 +237,7 @@ CAREER_TOOLS = [
     list_documents,
     list_postings,
     get_posting,
+    set_posting_resume,
     set_application_status,
     set_coffee_chat,
     pipeline_summary,

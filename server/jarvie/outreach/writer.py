@@ -56,14 +56,19 @@ class Sender:
     background: str  # the resume text
 
 
-def load_sender() -> Sender:
-    """Your name and resume, from the career profile (shared with the job search)."""
+def load_sender(resume: str | None = None, posting: dict | None = None) -> Sender:
+    """Your name and resume, from the career profile (shared with the job search).
+
+    resume names one of your resumes; otherwise a related posting's resume is used, or
+    your default one.
+    """
     from ..career import profile
 
     p = profile.load()
     if not p.name:
         raise ValueError("add your name under [applicant] in career_profile.toml to sign emails")
-    return Sender(p.name, p.resume_text())
+    chosen = p.resume(resume) if resume else p.resume_for(posting) if posting else p.resume()
+    return Sender(p.name, chosen.text())
 
 
 # Specific things a cold email might claim to know; each must appear in the stored facts.
@@ -141,12 +146,12 @@ def draft_outreach(
     purpose = p.get("purpose", "coffee_chat")
     if purpose not in messages.PURPOSES:
         raise ValueError(f"purpose must be one of {messages.PURPOSES}")
-    sender = sender or load_sender()
     posting = None
     if p.get("posting_id"):
         from ..career import postings  # optional link to the job search
 
         posting = postings.get(int(p["posting_id"]))
+    sender = sender or load_sender(p.get("resume") or None, posting)
 
     ids = [int(i) for i in p.get("contact_ids") or []]
     if not ids:

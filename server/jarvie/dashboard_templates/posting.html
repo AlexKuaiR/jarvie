@@ -29,6 +29,16 @@
   <input type="hidden" name="had_chat" value="{{ 0 if p.has_coffee_chat else 1 }}">
   <button>{{ "Unmark coffee chat" if p.has_coffee_chat else "Mark coffee chat ☕" }}</button>
 </form>
+{% if resumes|length > 1 %}
+<form method="post" action="/postings/{{ p.id }}/resume" style="margin-top:8px">
+  Resume: <select name="resume">
+    <option value="auto" {{ 'selected' if not p.resume }}>auto ({{ resume_used if not p.resume else "by fields" }})</option>
+    {% for r in resumes %}<option {{ 'selected' if p.resume == r }}>{{ r }}</option>{% endfor %}
+  </select>
+  <button>Use this resume</button>
+  <span class="muted">used for scoring, cover letters, essays and the apply assistant</span>
+</form>
+{% endif %}
 <form method="post" action="/postings/{{ p.id }}/documents" style="margin-top:8px">
   <select name="kind"><option value="cover_letter">cover letter</option><option value="essay">essay</option></select>
   <input name="question" placeholder="essay prompt (essays only)" size="40">

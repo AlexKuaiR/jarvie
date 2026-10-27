@@ -12,13 +12,16 @@ from . import briefs, jobs
 
 def _brief_prefill(kind: str) -> dict:
     """Answers already known from your career profile, so Jarvie doesn't re-ask them."""
-    if kind != "discover_postings":
-        return {}
     from .career import profile  # imported here so outreach works without a profile
 
     try:
         p = profile.load()
     except profile.ProfileError:
+        return {}
+    if kind == "find_contacts":
+        # Only worth asking which resume to use when there's more than one.
+        return {"resume": ""} if len(p.resumes) == 1 else {}
+    if kind != "discover_postings":
         return {}
     return {
         "kinds": p.kinds,

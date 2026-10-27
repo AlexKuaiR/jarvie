@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS postings (
     process TEXT,                   -- JSON list of steps, e.g. ["oa", "essays"]
     fit_score REAL, fit_reasons TEXT,
     raw_text TEXT,
+    resume TEXT,                    -- resume name picked for it; NULL = best match by fields
     found_at TEXT NOT NULL,
     found_by_job INTEGER
 );
@@ -59,5 +60,16 @@ CREATE TABLE IF NOT EXISTS status_events (
 """
 
 
+# Columns added after the first release. CREATE TABLE IF NOT EXISTS doesn't change a
+# table that already exists, so a database made before them gets them added here.
+ADDED_COLUMNS = {"postings": {"resume": "TEXT"}}
+
+
 def connect():
-    return connect_with(CAREER_SCHEMA)
+    conn = connect_with(CAREER_SCHEMA)
+    for table, cols in ADDED_COLUMNS.items():
+        have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for col, sql_type in cols.items():
+            if col not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {sql_type}")
+    return conn

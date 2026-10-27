@@ -24,7 +24,7 @@ Nothing is pushed.
  you ── voice ──┐                         you ── browser: http://localhost:7861 (dashboard)
  you ── text box (localhost:7860/client) ─┤                   │ review, edit, approve, set status
                 ▼                         ▼                   ▼
-   bot.py  (OpenAI gpt-4.1, unchanged)    30 tools ──►  SQLite ~/jarvie-data/jarvie.db  ◄── dashboard.py
+   bot.py  (OpenAI gpt-4.1, unchanged)    31 tools ──►  SQLite ~/jarvie-data/jarvie.db  ◄── dashboard.py
      ├─ job_tools.py   briefs + job status          postings · applications · status_events
      ├─ career/tools.py postings, status, docs      documents · contacts · outreach · jobs · briefs
      └─ outreach/tools.py people, email, drafts           ▲
@@ -81,11 +81,12 @@ Nothing is pushed.
 | Replies | Gmail thread checked every 10 minutes → replied or bounced; mark "had coffee chat" from a reply | Dashboard → Outreach |
 | Cover letters and essays | Opus with company research, versioned per posting. Claims about you that aren't in your resume are flagged. Essay word limits are enforced | "Write a cover letter for the Acme one", or "Write with Claude" on a posting |
 | Apply assistant | Greenhouse, Lever and Ashby forms: fills your details, uploads your resume and the latest cover letter, takes a screenshot and stops. EEO/demographic questions, checkboxes and custom questions are left for you. Workday and Handshake are refused | `python -m jarvie.career.apply_assist <posting_id>` |
+| Several resumes | Named resumes (e.g. swe, mle, qr), each with a text copy, a PDF and the fields it's for. Each posting uses the best match by fields (title first), or the one you pick. Scoring sees all of them and records which it judged against; cover letters, the claim check and the apply assistant's upload use the posting's resume; emails use the one you name, a linked posting's, or the default. Quant roles are tagged as field `quant` | Posting page → Resume, or "use my QR resume for the Citadel one" |
 | Cost control | Per-job budget (`CAREER_JOB_BUDGET_USD`, default $3), daily budget (`JARVIE_DAILY_BUDGET_USD`, default $10), cost logged per job | Dashboard → Jobs |
 
 ## 3. Test results
 
-- **Branch suite:** 187 passed, 1 skipped, 0 failed
+- **Branch suite:** 208 passed, 1 skipped, 0 failed
   (`server/.venv/bin/python -m pytest server -q`). The skip is the real-browser test, which runs
   once Chromium is installed. Lint is clean.
 - **New tests:**
@@ -93,6 +94,7 @@ Nothing is pushed.
     `test_briefs.py` (phase 0)
   - `test_career_phase1.py`, `test_career_phase2.py`, `test_outreach_phase3.py`,
     `test_outreach_phase4.py`, `test_career_phase5.py`, `test_career_phase6.py`
+  - `test_career_resumes.py` (several resumes)
   - Fakes in `tests/career_fakes.py` and `tests/agent_fakes.py`
 - **Trial merge of `career-pipeline` + `semantic-scholar` + `wakeword-eval` into `main`:**
   327 passed, 3 skipped. No files are deleted relative to any branch. Two files need a manual
@@ -122,9 +124,11 @@ Nothing is pushed.
    `~/jarvie-data/career_profile.toml`, then fill it in:
    - graduation month, fields and companies to watch (watchlist)
    - under `[applicant]`: name and email, needed for signing emails and filling forms
-   - `resume_pdf` (used by the apply assistant)
-2. **Your resume as text** at the `resume` path, Markdown or `.txt`. The models read this
-   version. PDF isn't supported yet.
+   - your resumes under `[resumes.<name>]` (the example has swe, mle and qr), or a single
+     `resume = ...` plus `resume_pdf` under `[applicant]`
+   - add `quant` to `fields` if you want quant roles
+2. **Each resume as text** at its `text` path, Markdown or `.txt`. The models read this
+   version. Its `pdf` is what the apply assistant uploads; models don't read PDFs yet.
 3. **Keys in `server/.env`** (add them yourself):
    - `ANTHROPIC_API_KEY`: research agent, writer, letters
    - `HUNTER_API_KEY`: email lookup. The free tier is small (about 25 lookups a month).
@@ -175,6 +179,11 @@ Nothing is pushed.
   wait until it finishes. That's fine at 15 a day, but a send can be a few minutes late.
 - **Duplicate postings across sources:** the same job on Simplify and on Greenhouse has
   different URLs, so it's saved twice.
+- **Resume auto-pick is keyword-based:** a "Quant Developer" posting tags both quant and
+  software engineering; the title decides, and a tie goes to `default_resume`. Check the
+  Resume line on a posting page before writing a letter, and pick one if it's wrong. The
+  agent's suggestion during scoring never overrides your pick.
+- **"trading" tags quant:** an "Energy Trading Operations" internship gets tagged quant.
 - **Keyword tagging is rough:** "Product Management Intern – Data and AI" gets tagged as machine
   learning because of "AI". The agent's scoring is meant to correct this; the hard filter is
   only a first cut.
@@ -185,7 +194,7 @@ Nothing is pushed.
   uses, so this is harmless. Check the repo name each season.
 - **Graduation filtering works at the year level:** "class of 2027" passes for a May 2028
   graduation with a ±6-month window. It only drops a posting when no year mentioned is in range.
-- **Too many tools for the voice model:** it now has 30 tools (35 once `semantic-scholar` is
+- **Too many tools for the voice model:** it now has 31 tools (36 once `semantic-scholar` is
   merged). gpt-4.1 handles that, but tool choice and latency may get worse. The README's planned
   two-stage tool retrieval would help.
 - **Voice vs typed is a guess:** the model decides whether you typed or spoke an answer.
@@ -220,13 +229,13 @@ Run these from `server/`. Use three terminals for the parts that need servers.
 ```bash
 cp jarvie/career/career_profile.example.toml ~/jarvie-data/career_profile.toml
 open -e ~/jarvie-data/career_profile.toml   # set graduation, fields, [applicant] name + email
-# put your resume text at the `resume` path, e.g. ~/jarvie-data/resume.md
+# put each resume's text and PDF at its paths, e.g. ~/jarvie-data/resume_swe.md + .pdf
 # add a few watchlist slugs, e.g. greenhouse = ["anthropic", "databricks"], ashby = ["openai"]
 ```
 
 **Step 1: tests**
 ```bash
-.venv/bin/python -m pytest -q          # expect: 187 passed, 1 skipped
+.venv/bin/python -m pytest -q          # expect: 208 passed, 1 skipped
 ```
 
 **Step 2: pull real postings (free, about 30 seconds)**

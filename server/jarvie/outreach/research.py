@@ -153,6 +153,7 @@ def find_contacts(job: dict, agent: AgentModel, finder: EmailFinder | None, spen
                 "contact_ids": with_email,
                 "purpose": p.get("purpose", "coffee_chat"),
                 "notes": p.get("notes", ""),
+                "resume": p.get("resume", ""),
             },
         )
     logger.info(

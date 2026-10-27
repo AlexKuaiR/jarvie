@@ -32,6 +32,7 @@ POSTING_FIELDS = {
     "fit_score",
     "fit_reasons",
     "raw_text",
+    "resume",
     "found_by_job",
 }
 JSON_FIELDS = {"fields", "skills", "process"}
@@ -107,6 +108,18 @@ def update(posting_id: int, **fields) -> bool:
             f"UPDATE postings SET {sets} WHERE id = ?", (*values.values(), posting_id)
         )
         return cur.rowcount > 0
+
+
+def set_resume(posting_id: int, name: str | None, only_if_unset: bool = False) -> bool:
+    """Pick the resume a posting uses (None = back to best match by fields).
+
+    only_if_unset is for the research agent's suggestion, so it never overrides yours.
+    """
+    sql = "UPDATE postings SET resume = ? WHERE id = ?"
+    if only_if_unset:
+        sql += " AND resume IS NULL"
+    with connect() as conn:
+        return conn.execute(sql, (name, posting_id)).rowcount > 0
 
 
 def get(posting_id: int) -> dict | None:

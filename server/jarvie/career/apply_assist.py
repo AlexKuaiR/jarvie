@@ -3,7 +3,7 @@
     .venv/bin/python -m jarvie.career.apply_assist <posting_id>
 
 Opens a visible browser on the posting's application form (Greenhouse, Lever or Ashby),
-fills what it can from [applicant] in your profile, attaches your resume and the latest
+fills what it can from [applicant] in your profile, attaches the posting's resume and the latest
 cover letter Jarvie wrote, and takes a screenshot. It never clicks Submit: you review
 every field, answer what it left blank, and submit yourself.
 
@@ -103,9 +103,18 @@ def value_for(label: str, applicant: dict) -> tuple[str | None, str]:
     return None, "not something it fills automatically"
 
 
-def plan_fill(fields: list[FormField], applicant: dict, cover_letter: Path | None) -> Plan:
+def plan_fill(
+    fields: list[FormField],
+    applicant: dict,
+    cover_letter: Path | None,
+    resume: Path | None = None,
+    resume_label: str = "resume_pdf",
+) -> Plan:
+    """What to type and upload where. `resume` is the PDF for this posting (falls back to
+    [applicant] resume_pdf)."""
     plan = Plan()
-    resume = Path(applicant["resume_pdf"]) if applicant.get("resume_pdf") else None
+    if resume is None and applicant.get("resume_pdf"):
+        resume = Path(applicant["resume_pdf"])
     for f in fields:
         lab = f.label.lower()
         if SENSITIVE.search(lab):
@@ -118,10 +127,13 @@ def plan_fill(fields: list[FormField], applicant: dict, cover_letter: Path | Non
                     plan.left_blank.append((f, "no cover letter written yet"))
             elif re.search(r"resume|cv\b|curriculum", lab):
                 if resume and resume.exists():
-                    plan.uploads.append((f, resume, "resume_pdf"))
+                    plan.uploads.append((f, resume, resume_label))
                 else:
                     plan.left_blank.append(
-                        (f, "set resume_pdf in [applicant] to a file that exists")
+                        (
+                            f,
+                            f"no PDF for {resume_label}: set pdf (or resume_pdf) to a file that exists",
+                        )
                     )
             else:
                 plan.left_blank.append((f, "unknown file upload"))
@@ -180,8 +192,15 @@ def prepare(posting_id: int, browser: Browser, profile: CareerProfile) -> tuple[
     if not profile.applicant.get("name") or not profile.applicant.get("email"):
         raise ValueError("fill in [applicant] name and email in career_profile.toml first")
 
+    chosen = profile.resume_for(posting)
     browser.open(application_url(posting))
-    plan = plan_fill(browser.fields(), profile.applicant, cover_letter_file(posting_id))
+    plan = plan_fill(
+        browser.fields(),
+        profile.applicant,
+        cover_letter_file(posting_id),
+        chosen.pdf_path,
+        f"resume '{chosen.name}'" if len(profile.resumes) > 1 else "resume_pdf",
+    )
     for f, value, _ in plan.fills:
         browser.fill(f, value)
     for f, path, _ in plan.uploads:

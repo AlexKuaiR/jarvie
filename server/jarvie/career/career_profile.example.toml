@@ -1,16 +1,22 @@
 # Copy to ~/jarvie-data/career_profile.toml and fill in. Jarvie reads it on every job, so
 # edits take effect without restarting anything.
 
-# Your resume as Markdown or plain text (PDF support comes later).
-resume = "~/jarvie-data/resume.md"
+# Your resumes. Each has a Markdown/plain-text copy the models read (`text`), the PDF the
+# apply assistant uploads (`pdf`), and the fields it's for. Each posting uses the resume
+# whose fields best match it (its title counts most); ties and non-matches use
+# default_resume. Override per posting on the dashboard or by voice ("use my QR resume
+# for the Citadel one"). With only one resume, `resume = "~/jarvie-data/resume.md"`
+# (plus resume_pdf under [applicant]) works instead of these tables.
+default_resume = "swe"
 
 # When you graduate, "YYYY-MM". Postings that require graduating outside the window
 # below are filtered out before any model sees them.
 graduation = "2028-05"
 graduation_window_months = 6
 
-# Which fields you want. Postings are tagged with these exact names.
-fields = ["machine learning", "software engineering", "biology", "biotech"]
+# Which fields you want. Postings are tagged with these exact names:
+# machine learning, software engineering, quant, biology, biotech.
+fields = ["machine learning", "software engineering", "quant", "biology", "biotech"]
 
 # What you'll consider.
 kinds = ["internship", "research"]
@@ -24,6 +30,21 @@ min_prestige = 1            # 1-5, see the rubric in research_agent.py
 dealbreakers = [
     "employer claims ownership of personal projects or outside work",
 ]
+
+[resumes.swe]
+text = "~/jarvie-data/resume_swe.md"
+pdf = "~/jarvie-data/resume_swe.pdf"
+fields = ["software engineering"]
+
+[resumes.mle]
+text = "~/jarvie-data/resume_mle.md"
+pdf = "~/jarvie-data/resume_mle.pdf"
+fields = ["machine learning", "biology", "biotech"]
+
+[resumes.qr]
+text = "~/jarvie-data/resume_qr.md"
+pdf = "~/jarvie-data/resume_qr.pdf"
+fields = ["quant"]
 
 # Companies to pull from public job-board APIs. Use the slug from the board URL:
 # boards.greenhouse.io/<slug>, jobs.lever.co/<slug>, jobs.ashbyhq.com/<slug>.
@@ -43,6 +64,6 @@ phone = ""
 school = "UC Berkeley"
 major = ""
 links = []                  # e.g. ["https://github.com/you", "https://you.dev"]
-resume_pdf = "~/jarvie-data/resume.pdf"
+# resume_pdf = "~/jarvie-data/resume.pdf"   # only with a single `resume = ...`
 location = "Berkeley, CA"
 work_authorization = ""     # as you'd answer "authorized to work in the US?"

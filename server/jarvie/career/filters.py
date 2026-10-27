@@ -66,6 +66,24 @@ FIELD_KEYWORDS = {
         "crispr",
         "biomedical",
     ],
+    "quant": [
+        "quant",
+        "quantitative research",
+        "quantitative researcher",
+        "quantitative trading",
+        "quantitative trader",
+        "quantitative developer",
+        "quantitative analyst",
+        "quantitative finance",
+        "trading",
+        "trader",
+        "market making",
+        "market maker",
+        "alpha research",
+        "systematic trading",
+        "high-frequency",
+        "hft",
+    ],
 }
 
 INTERN_WORDS = re.compile(
