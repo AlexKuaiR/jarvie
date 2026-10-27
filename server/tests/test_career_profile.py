@@ -19,7 +19,7 @@ def test_example_file_loads():
     assert p.graduation == date(2028, 5, 1)
     assert "machine learning" in p.fields
     assert p.paid_only is True
-    assert p.watchlist == {"greenhouse": [], "lever": [], "ashby": []}
+    assert p.watchlist["simplify"] == ["SimplifyJobs/Summer2027-Internships"]
 
 
 def test_minimal_profile_gets_defaults(tmp_path):

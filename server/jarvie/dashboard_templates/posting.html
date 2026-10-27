@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block body %}
+<h2>{{ p.title }} <span class="muted">· {{ p.company }}</span></h2>
+<p><a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.url }}</a></p>
+<div class="grid">
+  <div class="card"><div class="muted">Kind</div>{{ p.kind }}</div>
+  <div class="card"><div class="muted">Fit</div>{{ "%.2f" % p.fit_score if p.fit_score is not none else "not scored" }}</div>
+  <div class="card"><div class="muted">Paid</div>{{ {True: "yes", False: "no", None: "unknown"}[p.paid] }} {{ p.pay or "" }}</div>
+  <div class="card"><div class="muted">Deadline</div>{{ p.deadline or "unknown" }}</div>
+  <div class="card"><div class="muted">Applies via</div>{{ p.ats or "unknown" }}</div>
+</div>
+<h3>Scores</h3>
+<table>
+  {% for key in ["prestige", "competitiveness", "ownership"] %}
+  <tr><th>{{ key }}</th><td>{{ p[key] if p[key] is not none else "-" }}</td><td class="muted">{{ p[key ~ "_reason"] or "" }}</td></tr>
+  {% endfor %}
+  <tr><th>fit reasons</th><td colspan="2" class="muted">{{ p.fit_reasons or "" }}</td></tr>
+  <tr><th>skills</th><td colspan="2">{{ p.skills | join(", ") }}</td></tr>
+  <tr><th>process</th><td colspan="2">{{ p.process | join(", ") }}</td></tr>
+  <tr><th>graduation</th><td colspan="2">{{ p.grad_window or "" }}</td></tr>
+</table>
+<h3>Application</h3>
+<form method="post" action="/postings/{{ p.id }}/status">
+  <select name="status">{% for s in statuses %}<option {{ 'selected' if p.status == s }}>{{ s }}</option>{% endfor %}</select>
+  <input name="note" placeholder="note (optional)">
+  <button class="primary">Save status</button>
+</form>
+<form method="post" action="/postings/{{ p.id }}/coffee" style="margin-top:8px">
+  <input type="hidden" name="had_chat" value="{{ 0 if p.has_coffee_chat else 1 }}">
+  <button>{{ "Unmark coffee chat" if p.has_coffee_chat else "Mark coffee chat ☕" }}</button>
+</form>
+{% block posting_extra %}{% endblock %}
+{% if history %}
+<h3>History</h3>
+<table>{% for e in history %}<tr><td>{{ e.at[:16] }}</td><td>{{ e.status }}</td><td class="muted">{{ e.note or "" }}</td></tr>{% endfor %}</table>
+{% endif %}
+{% if p.raw_text %}<h3>Description</h3><pre class="muted">{{ p.raw_text[:6000] }}</pre>{% endif %}
+{% endblock %}

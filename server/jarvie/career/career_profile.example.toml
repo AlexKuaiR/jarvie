@@ -27,7 +27,9 @@ dealbreakers = [
 
 # Companies to pull from public job-board APIs. Use the slug from the board URL:
 # boards.greenhouse.io/<slug>, jobs.lever.co/<slug>, jobs.ashbyhq.com/<slug>.
+# simplify lists SimplifyJobs' GitHub internship repos (a new one each season).
 [watchlist]
 greenhouse = []
 lever = []
 ashby = []
+simplify = ["SimplifyJobs/Summer2027-Internships"]

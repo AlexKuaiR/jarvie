@@ -12,6 +12,8 @@ from pathlib import Path
 from .. import config
 from .postings import KINDS
 
+WATCHLIST_SOURCES = {"greenhouse", "lever", "ashby", "simplify"}
+
 
 class ProfileError(Exception):
     """The profile file is missing or has a bad value; the message says which."""
@@ -71,8 +73,8 @@ def load(path: Path | None = None) -> CareerProfile:
     if not 1 <= min_prestige <= 5:
         raise ProfileError("'min_prestige' must be 1-5")
     watchlist = data.get("watchlist", {})
-    if set(watchlist) - {"greenhouse", "lever", "ashby"}:
-        raise ProfileError("'watchlist' may only list greenhouse, lever and ashby")
+    if set(watchlist) - WATCHLIST_SOURCES:
+        raise ProfileError(f"'watchlist' may only list {', '.join(sorted(WATCHLIST_SOURCES))}")
 
     return CareerProfile(
         resume_path=Path(data["resume"]).expanduser(),

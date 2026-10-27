@@ -52,7 +52,9 @@ from pipecat.turns.user_turn_strategies import (
     default_user_turn_start_strategies,
 )
 
+from jarvie.career.tools import CAREER_TOOLS
 from jarvie.config import TZ
+from jarvie.job_tools import JOB_TOOLS
 from jarvie.tools import ALL_TOOLS, briefing, warmup
 from jarvie.wake import AwakeAtStartWakePhrase
 
@@ -94,7 +96,9 @@ async def run_bot(transport: BaseTransport):
         ),
     )
 
-    context = LLMContext(messages=[], tools=ALL_TOOLS)
+    # Career search and outreach tools live in their own packages; see jarvie/career,
+    # jarvie/outreach and jarvie/job_tools.py.
+    context = LLMContext(messages=[], tools=[*ALL_TOOLS, *JOB_TOOLS, *CAREER_TOOLS])
 
     # Starts awake so you can answer the greeting without "jarvis"; after `timeout`
     # seconds of silence it goes back to needing the wake phrase.
