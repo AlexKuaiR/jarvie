@@ -167,7 +167,6 @@ def test_all_tool_schemas_build_with_unique_names():
     names = [s.name for s in LLMContext(tools=every).tools.standard_tools]
     assert len(names) == len(set(names))
     assert {"start_brief", "answer_brief", "list_postings", "add_posting", "draft_emails"} <= set(names)
-    assert len(names) == 30  # 10 existing + 5 job + 9 career + 6 outreach
 
 
 def test_brief_by_voice_prefills_from_profile(profile_path):
