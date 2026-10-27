@@ -1,0 +1,123 @@
+"""The job queue between the voice bot and the background worker.
+
+The bot only inserts rows (enqueue) and reads them (get). The worker, a separate
+process, claims queued rows one at a time, runs them, and writes the result back.
+Using a table as the queue means no extra service to run: both processes just share
+the SQLite file. Shared by every feature with slow, model-driven work (career search,
+outreach), so none of them depends on another.
+"""
+
+from datetime import datetime
+
+from .config import TZ
+from .storage import connect_with, dumps, loads
+
+# kind -> which feature runs it. Career kinds search for postings; outreach kinds find
+# people and emails and draft messages, and work without any posting involved.
+KINDS = {
+    "discover_postings": "career",
+    "score_posting": "career",
+    "find_contacts": "outreach",
+    "find_email": "outreach",
+    "draft_outreach": "outreach",
+}
+
+JOBS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    params TEXT NOT NULL,           -- JSON dict
+    status TEXT NOT NULL DEFAULT 'queued',   -- queued, running, done, failed
+    result TEXT,
+    error TEXT,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cost_usd REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    finished_at TEXT
+);
+"""
+
+
+def connect():
+    return connect_with(JOBS_SCHEMA)
+
+
+def _now() -> str:
+    return datetime.now(TZ).isoformat()
+
+
+def _decode(r) -> dict:
+    out = dict(r)
+    out["params"] = loads(out["params"], {})
+    out["result"] = loads(out["result"])
+    return out
+
+
+def enqueue(kind: str, params: dict | None = None) -> int:
+    if kind not in KINDS:
+        raise ValueError(f"kind must be one of {sorted(KINDS)}")
+    with connect() as conn:
+        return conn.execute(
+            "INSERT INTO jobs (kind, params, created_at) VALUES (?, ?, ?)",
+            (kind, dumps(params or {}), _now()),
+        ).lastrowid
+
+
+def get(job_id: int) -> dict | None:
+    with connect() as conn:
+        r = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    return _decode(r) if r else None
+
+
+def claim_next() -> dict | None:
+    """Mark the oldest queued job as running and return it, or None if the queue is empty."""
+    # One UPDATE ... RETURNING statement claims the row atomically, so two workers
+    # running at once can never pick up the same job.
+    with connect() as conn:
+        r = conn.execute(
+            """UPDATE jobs SET status = 'running', started_at = ?
+               WHERE id = (SELECT id FROM jobs WHERE status = 'queued' ORDER BY id LIMIT 1)
+               RETURNING *""",
+            (_now(),),
+        ).fetchone()
+    return _decode(r) if r else None
+
+
+def finish(
+    job_id: int,
+    result: dict,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    cost_usd: float = 0.0,
+) -> None:
+    with connect() as conn:
+        conn.execute(
+            """UPDATE jobs SET status = 'done', result = ?, input_tokens = ?,
+               output_tokens = ?, cost_usd = ?, finished_at = ? WHERE id = ?""",
+            (dumps(result), input_tokens, output_tokens, cost_usd, _now(), job_id),
+        )
+
+
+def fail(job_id: int, error: str, cost_usd: float = 0.0) -> None:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE jobs SET status = 'failed', error = ?, cost_usd = ?, finished_at = ? WHERE id = ?",
+            (error, cost_usd, _now(), job_id),
+        )
+
+
+def recent(limit: int = 20) -> list[dict]:
+    with connect() as conn:
+        rows = conn.execute("SELECT * FROM jobs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    return [_decode(r) for r in rows]
+
+
+def spent_today() -> float:
+    """Dollars spent on jobs started today, for the daily cost cap."""
+    today = datetime.now(TZ).date().isoformat()
+    with connect() as conn:
+        return conn.execute(
+            "SELECT COALESCE(SUM(cost_usd), 0) FROM jobs WHERE created_at >= ?", (today,)
+        ).fetchone()[0]

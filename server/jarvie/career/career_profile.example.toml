@@ -1,0 +1,33 @@
+# Copy to ~/jarvie-data/career_profile.toml and fill in. Jarvie reads it on every job, so
+# edits take effect without restarting anything.
+
+# Your resume as Markdown or plain text (PDF support comes later).
+resume = "~/jarvie-data/resume.md"
+
+# When you graduate, "YYYY-MM". Postings that require graduating outside the window
+# below are filtered out before any model sees them.
+graduation = "2028-05"
+graduation_window_months = 6
+
+# Which fields you want. Postings are tagged with these exact names.
+fields = ["machine learning", "software engineering", "biology", "biotech"]
+
+# What you'll consider.
+kinds = ["internship", "research"]
+paid_only = true
+min_hourly_pay = 0          # USD; 0 means any paid position
+locations = ["Bay Area", "Boston", "Remote"]
+min_prestige = 1            # 1-5, see the rubric in research_agent.py
+
+# Things that rule a posting out, in plain words the research agent checks for,
+# e.g. ownership of work you do outside the job.
+dealbreakers = [
+    "employer claims ownership of personal projects or outside work",
+]
+
+# Companies to pull from public job-board APIs. Use the slug from the board URL:
+# boards.greenhouse.io/<slug>, jobs.lever.co/<slug>, jobs.ashbyhq.com/<slug>.
+[watchlist]
+greenhouse = []
+lever = []
+ashby = []

@@ -9,3 +9,4 @@ DATA_DIR.mkdir(exist_ok=True)
 DB_PATH = DATA_DIR / "jarvie.db"
 GOOGLE_CREDENTIALS = DATA_DIR / "credentials.json"
 GOOGLE_TOKEN = DATA_DIR / "token.json"
+CAREER_PROFILE = DATA_DIR / "career_profile.toml"
