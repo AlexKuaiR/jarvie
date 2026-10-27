@@ -8,6 +8,7 @@ dependencies = [
     "google-api-python-client>=2.200.0",
     "google-auth-httplib2>=0.4.2",
     "google-auth-oauthlib>=1.4.1",
+    "httpx>=0.28.1",
     "pipecat-ai[cartesia,daily,deepgram,openai,runner,silero,webrtc]",
     "pipecatcloud",
     "requests>=2.34.2",

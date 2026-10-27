@@ -13,7 +13,14 @@ Current (exists in `server/`):
   named Jarvie, but the wake phrase is still "jarvis" until it's changed deliberately;
   don't rename it as part of naming cleanups
 - Tool layer: typed function-calling tools in `server/jarvie/tools.py` (`ALL_TOOLS`):
-  Google Calendar events plus deadline add/list/update/mute/complete
+  Google Calendar events plus deadline add/list/update/mute/complete, plus papers
+  (find on Semantic Scholar, look up by DOI, search the local library, get, note)
+- Papers (start of the literature graph): `SemanticScholarSource` in
+  `server/jarvie/literature.py` (behind the `PaperSource` Protocol; `ManualSource` is the
+  offline/local one) searches S2 via httpx and caches every result in the `papers` table
+  (`server/jarvie/papers.py`, FTS5 keyword search). Optional `S2_API_KEY` env var; keyless
+  requests are often rate limited. Long requests can be typed in the prebuilt client's text box
+  at `http://localhost:7860/client`; they join the same conversation as voice
 - Storage: SQLite at `~/jarvie-data/jarvie.db` (`server/jarvie/db.py`)
 
 Planned (not built yet; move to Current as it becomes real):
@@ -21,7 +28,7 @@ Planned (not built yet; move to Current as it becomes real):
 - Sleep: transformer classifying sleep stages from physiological signals (the `sleep`
   table in `db.py` is a placeholder and is unused)
 - Scheduler: sleep debt + circadian phase vs. calendar density
-- Literature graph: Zotero local SQLite + Semantic Scholar citations
+- Literature graph: Zotero local SQLite, Semantic Scholar citations; full-text PDF grounding
 
 ## Layout (repo root is where Claude runs)
 - `server/bot.py`       Pipecat entrypoint (the voice pipeline)

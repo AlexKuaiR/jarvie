@@ -53,6 +53,11 @@ def test_tool_schemas_required_fields():
         "add_note": ["text"],
         "update_note": ["item_id"],
         "complete_note": ["item_id"],
+        "find_papers": ["query"],
+        "find_paper_by_doi": ["doi"],
+        "search_papers": ["query"],
+        "get_paper": ["paper_id"],
+        "add_paper_note": ["paper_id", "text"],
     }
 
 

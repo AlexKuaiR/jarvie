@@ -5,7 +5,7 @@ from datetime import datetime, time, timedelta
 from loguru import logger
 from pipecat.services.llm_service import FunctionCallParams
 
-from . import calendar, deadlines, note
+from . import calendar, deadlines, literature, note, papers
 from .config import TZ
 
 
@@ -295,6 +295,114 @@ async def complete_note(params: FunctionCallParams, item_id: int):
     ok = note.complete_note(item_id)
     await params.result_callback({"completed": ok})
 
+
+async def find_papers(
+    params: FunctionCallParams, query: str, limit: int = 5, year_from: int | None = None
+):
+    """Search Semantic Scholar for research papers on a topic.
+
+    Call this when the user wants papers they haven't seen yet, e.g. "find
+    papers on sleep spindles and memory", "anything recent on circadian
+    phase and caffeine". For papers already looked at, use search_papers.
+
+    Results are short (id, title, authors, year). To discuss a paper's
+    content, call get_paper with its paper_id. When speaking, give titles
+    and first authors, not the whole list.
+
+    Args:
+        query: A short topic phrase, e.g. "sleep spindles memory consolidation".
+        limit: Maximum number of papers to return.
+        year_from: Only papers from this year or later, if the user asked
+            for recent work.
+    """
+    try:
+        found = await literature.get_source().search(query, limit, year_from)
+    except literature.SourceError as e:
+        await params.result_callback({"found": False, "error": str(e)})
+        return
+    await params.result_callback({"found": bool(found), "papers": [p.summary() for p in found]})
+
+
+async def find_paper_by_doi(params: FunctionCallParams, doi: str):
+    """Look up one specific paper by its DOI.
+
+    Call this when the user gives a DOI, typed or spoken, e.g.
+    "10.1038/nature12345" or "https://doi.org/10.1038/nature12345". If they
+    give several, call once per DOI.
+
+    Returns the full paper like get_paper does.
+
+    Args:
+        doi: The DOI as given; a doi.org link or "doi:" prefix is fine.
+    """
+    try:
+        paper = await literature.get_source().get_by_doi(doi)
+    except literature.SourceError as e:
+        await params.result_callback({"found": False, "error": str(e)})
+        return
+    if paper is None:
+        await params.result_callback({"found": False})
+        return
+    await params.result_callback({"found": True, "paper": paper.to_dict()})
+
+
+async def search_papers(params: FunctionCallParams, query: str, limit: int = 5):
+    """Search papers the user has already found or looked up before.
+
+    Call this when the user refers back to a paper, e.g. "that spindle paper
+    from earlier", "what did I note about the Walker paper". To find new
+    papers, use find_papers.
+
+    Results are short (id, title, authors, year). To discuss a paper's
+    content, call get_paper with its paper_id.
+
+    Args:
+        query: A few keywords: topic, title words, or an author's surname.
+        limit: Maximum number of papers to return.
+    """
+    found = papers.search(query, limit)
+    await params.result_callback({"found": bool(found), "papers": [p.summary() for p in found]})
+
+
+async def get_paper(params: FunctionCallParams, paper_id: str):
+    """Get one paper's full details: abstract, venue, DOI and the user's notes.
+
+    Call this before answering any question about what a paper says, its
+    method or its findings. Use the paper_id from find_papers or
+    search_papers.
+
+    Answer from the abstract and notes only. If they don't cover the
+    question, or the abstract is missing, say so rather than filling in
+    from memory.
+    """
+    try:
+        paper = await literature.get_source().get(paper_id)
+    except literature.SourceError as e:
+        await params.result_callback({"found": False, "error": str(e)})
+        return
+    if paper is None:
+        await params.result_callback({"found": False})
+        return
+    await params.result_callback({"found": True, "paper": paper.to_dict()})
+
+
+async def add_paper_note(params: FunctionCallParams, paper_id: str, text: str):
+    """Save the user's own note on a paper, replacing any earlier note.
+
+    Call this when the user says something to remember about a specific
+    paper, e.g. "note that their sample was only 20 people". To keep the
+    existing note, call get_paper first and include its text in the new one.
+
+    Use the paper_id from find_papers or search_papers. If it's unclear which
+    paper they mean, ask.
+
+    Args:
+        text: The full note, in the user's own words.
+    """
+    ok = papers.update_notes(paper_id, text)
+    await params.result_callback({"saved": ok})
+
+
 ALL_TOOLS = [
     get_events,
     get_deadlines,
@@ -306,4 +414,9 @@ ALL_TOOLS = [
     add_note,
     update_note,
     complete_note,
+    find_papers,
+    find_paper_by_doi,
+    search_papers,
+    get_paper,
+    add_paper_note,
 ]
