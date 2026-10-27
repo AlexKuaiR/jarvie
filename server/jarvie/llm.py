@@ -109,6 +109,14 @@ def _client():
     return anthropic.Anthropic(timeout=600.0, max_retries=3)
 
 
+NO_KEY = "Anthropic API key missing or invalid (set ANTHROPIC_API_KEY in server/.env)"
+
+
+def _no_credentials(e: TypeError) -> bool:
+    # With no key at all, the SDK raises TypeError before sending anything.
+    return "authentication method" in str(e)
+
+
 class ClaudeAgent:
     """AgentModel on Claude via the SDK's tool runner, with server-side web tools."""
 
@@ -151,7 +159,11 @@ class ClaudeAgent:
                 last = message
                 total.add(usage_from(self.model, message.usage))
         except anthropic.AuthenticationError as e:
-            raise LLMError("Anthropic API key missing or invalid (set ANTHROPIC_API_KEY)") from e
+            raise LLMError(NO_KEY) from e
+        except TypeError as e:
+            if _no_credentials(e):
+                raise LLMError(NO_KEY) from e
+            raise
         except anthropic.RateLimitError as e:
             raise LLMError("Anthropic rate limit; try again later") from e
         except anthropic.APIConnectionError as e:
@@ -196,7 +208,11 @@ class ClaudeWriter:
                 output_config={"effort": self.effort},
             )
         except anthropic.AuthenticationError as e:
-            raise LLMError("Anthropic API key missing or invalid (set ANTHROPIC_API_KEY)") from e
+            raise LLMError(NO_KEY) from e
+        except TypeError as e:
+            if _no_credentials(e):
+                raise LLMError(NO_KEY) from e
+            raise
         except anthropic.APIConnectionError as e:
             raise LLMError("couldn't reach the Anthropic API") from e
         except anthropic.APIStatusError as e:
@@ -260,7 +276,11 @@ def write_many(
             batch = client.messages.batches.retrieve(batch.id)
         results = list(client.messages.batches.results(batch.id))
     except anthropic.AuthenticationError as e:
-        raise LLMError("Anthropic API key missing or invalid (set ANTHROPIC_API_KEY)") from e
+        raise LLMError(NO_KEY) from e
+    except TypeError as e:
+        if _no_credentials(e):
+            raise LLMError(NO_KEY) from e
+        raise
     except anthropic.APIStatusError as e:
         raise LLMError(f"Anthropic API error {e.status_code}: {e.message}") from e
     except anthropic.APIConnectionError as e:

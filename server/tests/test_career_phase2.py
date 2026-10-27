@@ -244,3 +244,31 @@ def test_refusal_becomes_an_llm_error():
     client = mock_anthropic([message([{"type": "text", "text": ""}], stop="refusal")])
     with pytest.raises(LLMError, match="declined"):
         ClaudeAgent(client=client).run(cached_system("s"), "go", [])
+
+
+def test_missing_anthropic_key_is_a_clear_error(monkeypatch):
+    import anthropic
+    import httpx2
+    from pydantic import BaseModel
+
+    from jarvie.llm import ClaudeWriter
+
+    for var in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_PROFILE"):
+        monkeypatch.delenv(var, raising=False)
+    # Either the SDK finds no credentials (TypeError) or a stored profile is rejected (401).
+    unauthorized = httpx2.MockTransport(
+        lambda r: httpx2.Response(
+            401, json={"type": "error", "error": {"type": "authentication_error", "message": "x"}}
+        )
+    )
+    client = anthropic.Anthropic(
+        max_retries=0, http_client=anthropic.DefaultHttpxClient(transport=unauthorized)
+    )
+
+    class Out(BaseModel):
+        x: str
+
+    with pytest.raises(LLMError, match="ANTHROPIC_API_KEY"):
+        ClaudeAgent(client=client).run(cached_system("s"), "go", [])
+    with pytest.raises(LLMError, match="ANTHROPIC_API_KEY"):
+        ClaudeWriter(client=client).write(cached_system("s"), "go", Out)
