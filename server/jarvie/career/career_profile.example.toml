@@ -33,3 +33,16 @@ greenhouse = []
 lever = []
 ashby = []
 simplify = ["SimplifyJobs/Summer2027-Internships"]
+
+# Your details: emails are signed with your name, and the apply assistant (phase 6)
+# fills these into application forms. Leave out anything you don't want used.
+[applicant]
+name = "Your Name"
+email = "you@berkeley.edu"
+phone = ""
+school = "UC Berkeley"
+major = ""
+links = []                  # e.g. ["https://github.com/you", "https://you.dev"]
+resume_pdf = "~/jarvie-data/resume.pdf"
+location = "Berkeley, CA"
+work_authorization = ""     # as you'd answer "authorized to work in the US?"

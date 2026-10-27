@@ -32,6 +32,12 @@ class CareerProfile:
     min_prestige: int = 1
     dealbreakers: list[str] = field(default_factory=list)
     watchlist: dict[str, list[str]] = field(default_factory=dict)
+    # Your details for signing emails and filling application forms ([applicant]).
+    applicant: dict = field(default_factory=dict)
+
+    @property
+    def name(self) -> str:
+        return self.applicant.get("name", "")
 
     def resume_text(self) -> str:
         if not self.resume_path.exists():
@@ -88,4 +94,30 @@ def load(path: Path | None = None) -> CareerProfile:
         min_prestige=min_prestige,
         dealbreakers=list(data.get("dealbreakers", [])),
         watchlist={k: list(v) for k, v in watchlist.items()},
+        applicant=_applicant(data.get("applicant", {})),
     )
+
+
+APPLICANT_KEYS = {
+    "name",
+    "email",
+    "phone",
+    "school",
+    "major",
+    "links",
+    "resume_pdf",
+    "location",
+    "work_authorization",
+    "pronouns",
+}
+
+
+def _applicant(data: dict) -> dict:
+    unknown = set(data) - APPLICANT_KEYS
+    if unknown:
+        raise ProfileError(f"unknown [applicant] keys: {sorted(unknown)}")
+    out = dict(data)
+    if "resume_pdf" in out:
+        out["resume_pdf"] = str(Path(out["resume_pdf"]).expanduser())
+    out["links"] = list(out.get("links", []))
+    return out

@@ -206,3 +206,83 @@ class ClaudeWriter:
         if response.parsed_output is None:
             raise LLMError("the model's answer didn't match the expected format")
         return response.parsed_output, usage_from(self.model, response.usage)
+
+
+BATCH_DISCOUNT = 0.5  # the Message Batches API bills at half price
+
+
+def write_many(
+    writer: "ClaudeWriter",
+    system: list[dict],
+    prompts: list[str],
+    schema: type[BaseModel],
+    poll_seconds: float = 30.0,
+    timeout_seconds: float = 3 * 3600,
+    sleep=None,
+) -> tuple[list[tuple[BaseModel | None, str | None]], Usage]:
+    """Many structured responses through the Batches API (half price, usually minutes).
+
+    Returns one (result, error) pair per prompt, in prompt order, plus total usage.
+    Batches finish in any order, so results are matched by custom_id, not position.
+    """
+    import time
+
+    import anthropic
+    from anthropic import transform_schema
+    from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
+    from anthropic.types.messages.batch_create_params import Request
+
+    sleep = sleep or time.sleep
+    client = writer._client or _client()
+    fmt = {"type": "json_schema", "schema": transform_schema(schema)}
+    try:
+        batch = client.messages.batches.create(
+            requests=[
+                Request(
+                    custom_id=f"p{i}",
+                    params=MessageCreateParamsNonStreaming(
+                        model=writer.model,
+                        max_tokens=8000,
+                        system=system,
+                        messages=[{"role": "user", "content": prompt}],
+                        output_config={"format": fmt, "effort": writer.effort},
+                    ),
+                )
+                for i, prompt in enumerate(prompts)
+            ]
+        )
+        waited = 0.0
+        while batch.processing_status != "ended":
+            if waited >= timeout_seconds:
+                raise LLMError(f"batch {batch.id} still running after {timeout_seconds:.0f}s")
+            sleep(poll_seconds)
+            waited += poll_seconds
+            batch = client.messages.batches.retrieve(batch.id)
+        results = list(client.messages.batches.results(batch.id))
+    except anthropic.AuthenticationError as e:
+        raise LLMError("Anthropic API key missing or invalid (set ANTHROPIC_API_KEY)") from e
+    except anthropic.APIStatusError as e:
+        raise LLMError(f"Anthropic API error {e.status_code}: {e.message}") from e
+    except anthropic.APIConnectionError as e:
+        raise LLMError("couldn't reach the Anthropic API") from e
+
+    out: list[tuple[BaseModel | None, str | None]] = [(None, "missing from batch")] * len(prompts)
+    total = Usage()
+    for r in results:
+        i = int(r.custom_id[1:])
+        if r.result.type != "succeeded":
+            out[i] = (None, f"batch request {r.result.type}")
+            continue
+        msg = r.result.message
+        u = usage_from(writer.model, msg.usage)
+        u.cost_usd *= BATCH_DISCOUNT
+        total.add(u)
+        if msg.stop_reason == "refusal":
+            out[i] = (None, "the model declined this request")
+            continue
+        text = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
+        try:
+            out[i] = (schema.model_validate_json(text), None)
+        except ValueError as e:
+            out[i] = (None, f"bad format: {e}")
+    return out, total

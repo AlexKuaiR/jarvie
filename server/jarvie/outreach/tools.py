@@ -117,4 +117,45 @@ async def outreach_queue(params: FunctionCallParams):
     await params.result_callback({"counts": counts, "drafts": drafts[:10]})
 
 
-OUTREACH_TOOLS = [find_email, add_contact, list_contacts, do_not_contact, outreach_queue]
+async def draft_emails(
+    params: FunctionCallParams,
+    contact_ids: list[int],
+    purpose: str = "coffee_chat",
+    notes: str | None = None,
+    posting_id: int | None = None,
+):
+    """Have the writer draft personal emails to saved contacts, in the background.
+
+    Call this for "draft coffee chat emails to the Genentech recruiters" (use
+    list_contacts to get their ids). Drafts wait on the dashboard for the user to edit
+    and approve; nothing is sent without approval.
+
+    Args:
+        contact_ids: Who to write to.
+        purpose: coffee_chat, research_inquiry, referral, advice or other.
+        notes: Anything the user wants mentioned, in their words.
+        posting_id: A related saved posting, if any.
+    """
+    if purpose not in messages.PURPOSES:
+        await params.result_callback({"error": f"purpose must be one of {messages.PURPOSES}"})
+        return
+    job_id = jobs.enqueue(
+        "draft_outreach",
+        {
+            "contact_ids": contact_ids,
+            "purpose": purpose,
+            "notes": notes or "",
+            "posting_id": posting_id,
+        },
+    )
+    await params.result_callback({"started": True, "job_id": job_id})
+
+
+OUTREACH_TOOLS = [
+    find_email,
+    add_contact,
+    list_contacts,
+    do_not_contact,
+    draft_emails,
+    outreach_queue,
+]

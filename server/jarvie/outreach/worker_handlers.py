@@ -1,10 +1,12 @@
 """Outreach job handlers and ticks, registered with the worker."""
 
+import time
+
 from loguru import logger
 
 from ..llm import Usage
-from ..worker import WorkerContext, handler
-from . import research
+from ..worker import TICKS, WorkerContext, handler
+from . import research, sender, writer
 from .email_finder import EmailFinderError
 
 
@@ -25,3 +27,26 @@ def find_contacts(job: dict, ctx: WorkerContext, spend: Usage) -> dict:
 @handler("find_email")
 def find_email(job: dict, ctx: WorkerContext, spend: Usage) -> dict:
     return research.find_email(job, ctx.get_email_finder())
+
+
+@handler("draft_outreach")
+def draft_outreach(job: dict, ctx: WorkerContext, spend: Usage) -> dict:
+    return writer.draft_outreach(job, ctx.get_writer(), spend, ctx.extra.get("sender"))
+
+
+REPLY_CHECK_SECONDS = 600
+
+
+def outreach_tick(ctx: WorkerContext) -> None:
+    """Every worker loop: schedule approved email, send what's due, check for replies."""
+    mailer = ctx.get_mailer()
+    sender.schedule_approved()
+    sender.send_due(mailer)
+    last = ctx.extra.get("last_reply_check", 0.0)
+    if time.monotonic() - last >= REPLY_CHECK_SECONDS:
+        ctx.extra["last_reply_check"] = time.monotonic()
+        sender.check_replies(mailer)
+
+
+if outreach_tick not in TICKS:
+    TICKS.append(outreach_tick)

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block body %}
+<p>{% if dry_run %}<span class="pill">DRY RUN</span> Approved emails are scheduled and "sent" to <code>~/jarvie-data/outbox_dry_run.jsonl</code> only. Set <code>CAREER_SEND_ENABLED=1</code> to send from Gmail.
+{% else %}<span class="pill bad">LIVE</span> Approved emails send from your Gmail, at most {{ cap }} a day, weekdays 9-5.{% endif %}</p>
+<div class="grid" style="margin-bottom:16px">{% for s, n in counts.items() %}<div class="card"><div class="muted">{{ s }}</div><b>{{ n }}</b></div>{% endfor %}</div>
+
+{% if drafts %}
+<form method="post" action="/outreach/approve-all" style="margin-bottom:12px"><button class="primary">Approve all {{ drafts | length }} drafts</button></form>
+{% endif %}
+{% for m in drafts %}
+<div class="card" style="margin-bottom:12px">
+  <div><b>{{ m.name }}</b> <span class="muted">· {{ m.company or "" }} · {{ m.email }} · {{ m.purpose }}</span></div>
+  <form method="post" action="/outreach/{{ m.id }}/save">
+    <input name="subject" value="{{ m.subject }}" style="width:100%;margin:6px 0">
+    <textarea name="body">{{ m.body }}</textarea>
+    <button>Save edits</button>
+  </form>
+  <form method="post" action="/outreach/{{ m.id }}/status" class="inline"><input type="hidden" name="status" value="approved"><button class="primary">Approve</button></form>
+  <form method="post" action="/outreach/{{ m.id }}/status" class="inline"><input type="hidden" name="status" value="stopped"><button>Reject</button></form>
+</div>
+{% else %}<p class="muted">No drafts waiting. Draft emails by voice ("draft coffee chat emails to ...") or from a people search with "draft after" on.</p>{% endfor %}
+
+<h3>In progress and sent</h3>
+<table>
+  <tr><th>To</th><th>Subject</th><th>Status</th><th>When</th><th></th></tr>
+  {% for m in others %}
+  <tr>
+    <td>{{ m.name }} <span class="muted">{{ m.company or "" }}</span></td>
+    <td>{{ m.subject }}</td>
+    <td>{{ m.status }}{% if m.gmail_message_id and m.gmail_message_id.startswith("dryrun-") %} <span class="pill">dry run</span>{% endif %}</td>
+    <td class="muted">{{ (m.sent_at or m.scheduled_at or "")[:16] }}</td>
+    <td>
+      {% if m.status in ("approved", "scheduled") %}<form method="post" action="/outreach/{{ m.id }}/status" class="inline"><input type="hidden" name="status" value="stopped"><button>Cancel</button></form>{% endif %}
+      {% if m.status == "replied" and m.posting_id %}<form method="post" action="/outreach/{{ m.id }}/coffee" class="inline"><button>Had coffee chat ☕</button></form>{% endif %}
+    </td>
+  </tr>
+  {% else %}<tr><td colspan="5" class="muted">Nothing yet.</td></tr>{% endfor %}
+</table>
+{% endblock %}
