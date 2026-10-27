@@ -47,7 +47,7 @@ async def find_email(
     else:
         await params.result_callback({"error": "need a name and company, or a contact_id"})
         return
-    await params.result_callback({"started": True, "job_id": job_id})
+    await params.result_callback({"started": True, "job_id": job_id, **jobs.worker_note()})
 
 
 async def add_contact(
@@ -152,7 +152,7 @@ async def draft_emails(
             "resume": resume or "",
         },
     )
-    await params.result_callback({"started": True, "job_id": job_id})
+    await params.result_callback({"started": True, "job_id": job_id, **jobs.worker_note()})
 
 
 OUTREACH_TOOLS = [

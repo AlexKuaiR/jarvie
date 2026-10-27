@@ -171,7 +171,7 @@ def test_all_tool_schemas_build_with_unique_names():
 
 def test_brief_by_voice_prefills_from_profile(profile_path):
     started = call(start_brief, kind="discover_postings")
-    assert started["prefilled"]["paid_only"] is True
+    assert started["answers"]["paid_only"] is True
     assert "term" in [q["key"] for q in started["questions"]]
     bid = started["brief_id"]
     assert (

@@ -32,7 +32,7 @@ def _brief_prefill(kind: str) -> dict:
     }
 
 
-async def start_brief(params: FunctionCallParams, kind: str):
+async def start_brief(params: FunctionCallParams, kind: str, answers: dict | None = None):
     """Start the questions for a big search, before anything runs.
 
     Call this when the user wants a broad search: "find me internships" uses kind
@@ -42,24 +42,30 @@ async def start_brief(params: FunctionCallParams, kind: str):
     answer_brief. If open_briefs shows one of the same kind already open, continue that
     one instead of starting another.
 
-    Answers already known from the user's profile are pre-filled; read them back
+    Answers from the user's profile are pre-filled, but they are only defaults: pass
+    everything the user already said in their request as answers, which replaces them
+    (e.g. "find me five paid biotech internships" -> {"fields": "biotech",
+    "max_results": 5, "paid_only": "yes"}). Read the remaining pre-filled answers back
     briefly so the user can change them.
 
     Args:
         kind: "discover_postings" or "find_contacts".
+        answers: Question key -> what the user already said, in their words.
     """
     try:
         brief_id = briefs.start(kind, prefill=_brief_prefill(kind))
     except briefs.BriefError as e:
         await params.result_callback({"error": str(e)})
         return
-    await params.result_callback(
-        {
-            "brief_id": brief_id,
-            "prefilled": briefs.get(brief_id)["answers"],
-            "questions": briefs.remaining(brief_id),
-        }
-    )
+    result: dict = {"brief_id": brief_id}
+    if answers:
+        try:
+            briefs.answer(brief_id, answers)
+        except briefs.BriefError as e:
+            result["error"] = f"{e}; the brief is open, fix that answer with answer_brief"
+    brief = briefs.get(brief_id)
+    result.update(answers=brief["answers"], questions=briefs.remaining(brief_id))
+    await params.result_callback(result)
 
 
 async def answer_brief(
@@ -68,9 +74,12 @@ async def answer_brief(
     """Record the user's answers to brief questions, in their words.
 
     Pass whatever the user said for each question key, e.g. {"term": "Summer 2027",
-    "fields": "machine learning and biotech"}; lists and yes/no are understood. If the
-    result has an error, explain it and ask again. When "remaining" has no required
-    questions left, offer to start the search with submit_brief.
+    "fields": "machine learning and biotech"}; lists and yes/no are understood. An
+    answer replaces a pre-filled one. Company lists (include_companies,
+    exclude_companies) take names only, like ["Eli Lilly"]; put descriptions such as
+    "big companies" or "promising startups" in notes. If the result has an error,
+    explain it and ask again. When "remaining" has no required questions left, read
+    the answers back in one sentence and offer to start with submit_brief.
 
     Args:
         brief_id: From start_brief or open_briefs.
@@ -90,15 +99,16 @@ async def answer_brief(
 async def submit_brief(params: FunctionCallParams, brief_id: int):
     """Start the search described by a brief. It runs in the background.
 
-    Only call this after the user agrees to start. Tell them it's running and that
-    they can ask for its status; don't wait for it.
+    Only call this after the user agrees to start. Tell them it's queued and that
+    they can ask for its status; don't wait for it. If the result says the worker
+    isn't running, tell the user it won't start until they run the worker.
     """
     try:
         job_id = briefs.submit(brief_id)
     except briefs.BriefError as e:
         await params.result_callback({"error": str(e)})
         return
-    await params.result_callback({"started": True, "job_id": job_id})
+    await params.result_callback({"started": True, "job_id": job_id, **jobs.worker_note()})
 
 
 async def open_briefs(params: FunctionCallParams):
@@ -121,7 +131,8 @@ async def job_status(params: FunctionCallParams, job_id: int | None = None):
     """How a background search or lookup is going, or the most recent ones.
 
     Call this when the user asks "is my search done?" or "what did it find?". Leave
-    job_id out for the five most recent jobs. Summarize results briefly; for postings,
+    job_id out for the five most recent jobs. If the result says the worker isn't
+    running, say so: queued jobs won't start until it is. Summarize results briefly; for postings,
     use list_postings to read them.
 
     Args:
@@ -129,9 +140,12 @@ async def job_status(params: FunctionCallParams, job_id: int | None = None):
     """
     if job_id is not None:
         job = jobs.get(job_id)
-        await params.result_callback({"found": job is not None, "job": job and _brief(job)})
+        note = jobs.worker_note() if job and job["status"] == "queued" else {}
+        await params.result_callback({"found": job is not None, "job": job and _brief(job), **note})
         return
-    await params.result_callback({"jobs": [_brief(j) for j in jobs.recent(5)]})
+    recent = jobs.recent(5)
+    note = jobs.worker_note() if any(j["status"] == "queued" for j in recent) else {}
+    await params.result_callback({"jobs": [_brief(j) for j in recent], **note})
 
 
 def _brief(job: dict) -> dict:

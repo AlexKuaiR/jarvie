@@ -11,6 +11,7 @@ and dashboard just add rows to the jobs table and read results back.
 import argparse
 import os
 import signal
+import sqlite3
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -155,13 +156,31 @@ def main() -> None:
     signal.signal(signal.SIGINT, lambda *_: stop.set())
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     logger.info("worker started (daily budget ${:.2f})", daily_budget())
-    while not stop.is_set():
-        run_pending(ctx, stop)
-        run_ticks(ctx)
-        if args.once:
-            break
-        stop.wait(args.poll)
+    # The heartbeat runs on its own thread so it keeps beating during a long job; the
+    # bot and dashboard read it to warn when jobs are queued with no worker running.
+    jobs.heartbeat()  # first beat before any work, so the bot sees it right away
+    beat = threading.Thread(target=_beat, args=(stop,), name="heartbeat", daemon=True)
+    beat.start()
+    try:
+        while not stop.is_set():
+            run_pending(ctx, stop)
+            run_ticks(ctx)
+            if args.once:
+                break
+            stop.wait(args.poll)
+    finally:
+        stop.set()
+        beat.join(timeout=2)
+        jobs.heartbeat(alive=False)
     logger.info("worker stopped")
+
+
+def _beat(stop: threading.Event) -> None:
+    while not stop.wait(jobs.HEARTBEAT_EVERY):
+        try:
+            jobs.heartbeat()
+        except sqlite3.Error as e:  # a locked database for a moment isn't fatal
+            logger.warning("heartbeat failed: {}", e)
 
 
 if __name__ == "__main__":

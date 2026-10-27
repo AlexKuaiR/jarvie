@@ -165,7 +165,7 @@ async def add_posting(params: FunctionCallParams, url_or_text: str):
         return
     is_url = text.startswith(("http://", "https://")) and " " not in text
     job_id = jobs.enqueue("score_posting", {"url": text} if is_url else {"text": text})
-    await params.result_callback({"started": True, "job_id": job_id})
+    await params.result_callback({"started": True, "job_id": job_id, **jobs.worker_note()})
 
 
 async def write_cover_letter(params: FunctionCallParams, posting_id: int, notes: str | None = None):
@@ -180,7 +180,7 @@ async def write_cover_letter(params: FunctionCallParams, posting_id: int, notes:
     job_id = jobs.enqueue(
         "write_document", {"posting_id": posting_id, "kind": "cover_letter", "notes": notes or ""}
     )
-    await params.result_callback({"started": True, "job_id": job_id})
+    await params.result_callback({"started": True, "job_id": job_id, **jobs.worker_note()})
 
 
 async def write_essay(
@@ -210,7 +210,7 @@ async def write_essay(
             "notes": notes or "",
         },
     )
-    await params.result_callback({"started": True, "job_id": job_id})
+    await params.result_callback({"started": True, "job_id": job_id, **jobs.worker_note()})
 
 
 async def list_documents(params: FunctionCallParams, posting_id: int | None = None):

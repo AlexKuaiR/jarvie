@@ -113,6 +113,25 @@ def tag_fields(title: str, text: str) -> list[str]:
     return [f for f, words in FIELD_KEYWORDS.items() if any(_has_word(haystack, w) for w in words)]
 
 
+COMPANY_SUFFIXES = re.compile(r"\b(inc|llc|ltd|corp|corporation|co|company|plc)\b")
+
+
+def company_key(name: str) -> str:
+    """A company name reduced for matching: "Johnson & Johnson" == "johnson and johnson",
+    "Eli Lilly and Company" == "Eli Lilly"."""
+    text = name.lower().replace("&", " and ")
+    text = COMPANY_SUFFIXES.sub(" ", re.sub(r"[^a-z0-9 ]+", " ", text))
+    words = text.split()
+    while words and words[-1] == "and":  # "Eli Lilly and Company" -> "eli lilly"
+        words.pop()
+    return " ".join(words)
+
+
+def same_company(name: str, wanted: list[str]) -> bool:
+    key = company_key(name)
+    return bool(key) and any(key == company_key(w) for w in wanted)
+
+
 def kind_of(title: str, text: str) -> str:
     return "research" if RESEARCH_WORDS.search(title) else "internship"
 
@@ -154,7 +173,6 @@ class Verdict:
 def judge(p: RawPosting, c: Criteria) -> Verdict:
     """Keep or drop one posting, with the reason when dropped."""
     text = f"{p.title}\n{p.location}\n{p.text}"
-    company = p.company.lower()
     fields = tag_fields(p.title, p.text)
     kind = kind_of(p.title, p.text)
     paid = False if UNPAID_WORDS.search(text) else None
@@ -162,9 +180,9 @@ def judge(p: RawPosting, c: Criteria) -> Verdict:
     def drop(reason: str) -> Verdict:
         return Verdict(False, reason, fields, kind, paid)
 
-    if any(company == x.lower() for x in c.exclude_companies):
+    if same_company(p.company, c.exclude_companies):
         return drop("excluded company")
-    wanted = any(company == x.lower() for x in c.include_companies)
+    wanted = same_company(p.company, c.include_companies)
     if not INTERN_WORDS.search(p.title) and not (p.terms and p.source == "simplify"):
         return drop("not an internship or research position")
     if kind not in c.kinds:
@@ -202,7 +220,7 @@ def relevance(p: RawPosting, v: Verdict, c: Criteria) -> float:
     score += 0.5 * len((set(v.fields) - title_fields) & wanted_fields)
     if c.term and any(c.term.lower() == t.lower() for t in p.terms):
         score += 3.0
-    if any(p.company.lower() == x.lower() for x in c.include_companies):
+    if same_company(p.company, c.include_companies):
         score += 5.0
     if p.ats in ("greenhouse", "lever", "ashby"):
         score += 0.5  # easiest to read and, later, to fill in

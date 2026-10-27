@@ -30,6 +30,7 @@
   {% endfor %}
 </nav>
 <main>
+{% if stalled_jobs %}<div class="flash">{{ stalled_jobs }} job{{ "s" if stalled_jobs > 1 }} queued, but the worker isn't running. Start it: <code>{{ start_worker }}</code></div>{% endif %}
 {% if error %}<div class="flash">{{ error }}</div>{% endif %}
 {% block body %}{% endblock %}
 </main>

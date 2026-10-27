@@ -22,10 +22,20 @@ NAV: list[tuple[str, str]] = []
 
 
 def render(request: Request, name: str, active: str, **context) -> HTMLResponse:
+    # Every page warns when jobs are waiting and no worker is running to do them.
+    queued = jobs.queued_count()
+    stalled = queued if queued and not jobs.worker_running() else 0
     return templates.TemplateResponse(
         request,
         name,
-        {"nav": NAV, "active": active, "title": name.removesuffix(".html"), **context},
+        {
+            "nav": NAV,
+            "active": active,
+            "title": name.removesuffix(".html"),
+            "stalled_jobs": stalled,
+            "start_worker": jobs.START_WORKER,
+            **context,
+        },
     )
 
 

@@ -197,6 +197,14 @@ Nothing is pushed.
 - **Too many tools for the voice model:** it now has 31 tools (36 once `semantic-scholar` is
   merged). gpt-4.1 handles that, but tool choice and latency may get worse. The README's planned
   two-stage tool retrieval would help.
+- **The worker must be running for anything to happen.** Jarvie only queues jobs. The worker
+  writes a heartbeat every 10 seconds; when it's missing, Jarvie says so when it queues
+  something or reports status, and every dashboard page shows a banner with the start command.
+- **What you say in a search request replaces the profile's pre-filled answers** (e.g.
+  "biotech" replaces your profile's field list). Company lists hold names only;
+  descriptions like "promising startups" go to notes. Company names match loosely
+  ("Johnson & Johnson" = "Johnson and Johnson", "Eli Lilly and Company" = "Eli Lilly"), but
+  naming a company only ranks it first: it's searched only if its board is on your watchlist.
 - **Voice vs typed is a guess:** the model decides whether you typed or spoke an answer.
   Nothing depends on it; it's recorded for reference only.
 - **A search that fails partway keeps what it saved:** for example, with no key, or when the

@@ -79,7 +79,8 @@ QUESTIONS: dict[str, tuple[Question, ...]] = {
         ),
         Question(
             "include_companies",
-            "Any companies or labs you specifically want checked?",
+            "Any companies or labs to put first? Names only; they're searched if they're "
+            "on your watchlist.",
             "list",
             required=False,
             default=[],

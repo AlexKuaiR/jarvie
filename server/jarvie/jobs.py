@@ -7,6 +7,7 @@ the SQLite file. Shared by every feature with slow, model-driven work (career se
 outreach), so none of them depends on another.
 """
 
+import time
 from datetime import datetime
 
 from .config import TZ
@@ -38,7 +39,17 @@ CREATE TABLE IF NOT EXISTS jobs (
     started_at TEXT,
     finished_at TEXT
 );
+-- One row, written every few seconds by a running worker, so the bot and dashboard
+-- can tell you when jobs are queued with nothing to run them.
+CREATE TABLE IF NOT EXISTS worker_heartbeat (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    at REAL                         -- unix time; NULL after a clean shutdown
+);
 """
+
+HEARTBEAT_EVERY = 10.0  # seconds between heartbeats
+HEARTBEAT_STALE = 30.0  # no heartbeat for this long = the worker isn't running
+START_WORKER = "cd server && .venv/bin/python -m jarvie.worker"
 
 
 def connect():
@@ -122,3 +133,35 @@ def spent_today() -> float:
         return conn.execute(
             "SELECT COALESCE(SUM(cost_usd), 0) FROM jobs WHERE created_at >= ?", (today,)
         ).fetchone()[0]
+
+
+def queued_count() -> int:
+    with connect() as conn:
+        return conn.execute("SELECT COUNT(*) FROM jobs WHERE status = 'queued'").fetchone()[0]
+
+
+def heartbeat(alive: bool = True) -> None:
+    """Called by the worker: alive=True while running, False when it shuts down."""
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO worker_heartbeat (id, at) VALUES (1, ?) "
+            "ON CONFLICT (id) DO UPDATE SET at = excluded.at",
+            (time.time() if alive else None,),
+        )
+
+
+def worker_running() -> bool:
+    with connect() as conn:
+        r = conn.execute("SELECT at FROM worker_heartbeat WHERE id = 1").fetchone()
+    return bool(r and r["at"] and time.time() - r["at"] < HEARTBEAT_STALE)
+
+
+def worker_note() -> dict:
+    """Extra fields for a tool result that queued a job: a warning if nothing will run it."""
+    if worker_running():
+        return {}
+    return {
+        "worker_running": False,
+        "tell_user": "The background worker isn't running, so this stays queued until "
+        f"you start it: {START_WORKER}",
+    }
