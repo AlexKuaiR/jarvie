@@ -237,4 +237,9 @@ def _beat(stop: threading.Event) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # `python -m jarvie.worker` runs this file as a second copy of the module named __main__,
+    # while the feature packages register handlers/pages on the importable jarvie.worker.
+    # Running that copy's main() keeps everything in one module.
+    from jarvie.worker import main as _main
+
+    _main()

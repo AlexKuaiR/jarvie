@@ -135,10 +135,21 @@ def add_brief_and_job_routes(app: FastAPI) -> None:
         return back("/briefs")
 
     @app.get("/jobs", response_class=HTMLResponse)
-    def jobs_page(request: Request):
+    def jobs_page(request: Request, error: str | None = None):
         return render(
-            request, "jobs.html", "/jobs", items=jobs.recent(50), spent=jobs.spent_today()
+            request,
+            "jobs.html",
+            "/jobs",
+            items=jobs.recent(50),
+            spent=jobs.spent_today(),
+            error=error,
         )
+
+    @app.post("/jobs/{job_id}/retry")
+    def retry_job(job_id: int):
+        if not jobs.retry(job_id):
+            return back("/jobs", f"job {job_id} isn't a failed job")
+        return back("/jobs")
 
 
 def create_app() -> FastAPI:
@@ -160,4 +171,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # `python -m jarvie.dashboard` runs this file as a second copy of the module named __main__,
+    # while the feature packages register handlers/pages on the importable jarvie.dashboard.
+    # Running that copy's main() keeps everything in one module.
+    from jarvie.dashboard import main as _main
+
+    _main()

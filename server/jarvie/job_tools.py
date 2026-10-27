@@ -80,9 +80,11 @@ async def answer_brief(
 
     Pass whatever the user said for each question key, e.g. {"term": "Summer 2027",
     "fields": "machine learning and biotech"}; lists and yes/no are understood. An
-    answer replaces a pre-filled one. Company lists (include_companies,
-    exclude_companies) take names only, like ["Eli Lilly"]; put descriptions such as
-    "big companies" or "promising startups" in notes. If the result has an error,
+    answer replaces a pre-filled one. Record each answer as soon as the user gives it,
+    before asking the next question. Company lists (include_companies,
+    exclude_companies) must be a JSON list of names, e.g. ["Merck", "Johnson & Johnson"],
+    never one sentence; put descriptions such as "big companies" or "promising startups"
+    in notes. If the result has an error,
     explain it and ask again. When "remaining" has no required questions left, read
     the answers back in one sentence and offer to start with submit_brief.
 

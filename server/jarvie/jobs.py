@@ -114,6 +114,17 @@ def claim(job_id: int) -> dict | None:
     return _decode(r) if r else None
 
 
+def retry(job_id: int) -> bool:
+    """Queue a failed job again with the same parameters (e.g. after fixing a key)."""
+    with connect() as conn:
+        cur = conn.execute(
+            """UPDATE jobs SET status = 'queued', error = NULL, result = NULL,
+               started_at = NULL, finished_at = NULL WHERE id = ? AND status = 'failed'""",
+            (job_id,),
+        )
+        return cur.rowcount > 0
+
+
 def requeue(job_id: int) -> None:
     """Put a running job back in the queue (e.g. a plan limit was hit before it ran)."""
     with connect() as conn:

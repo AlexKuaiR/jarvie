@@ -152,3 +152,52 @@ def test_worker_main_beats_while_running_and_clears_on_exit(monkeypatch):
     worker.main()
     assert seen == [True]  # alive while it ran
     assert not jobs.worker_running()  # cleared when it stopped
+
+
+# --- company names as spoken --------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "said, names, phrases",
+    [
+        ("Eli Lilly or promising start ups", ["Eli Lilly"], ["promising start ups"]),
+        ("Merck and Johnson and Johnson", ["Merck", "Johnson and Johnson"], []),
+        ("Merck and Pfizer", ["Merck", "Pfizer"], []),
+        ("Johnson & Johnson, Merck", ["Johnson & Johnson", "Merck"], []),
+        (["Merck", "Johnson & Johnson"], ["Merck", "Johnson & Johnson"], []),
+        ("big companies like Eli Lilly", ["Eli Lilly"], ["big companies like Eli Lilly"]),
+        ("none", [], []),
+    ],
+)
+def test_company_names_from_speech(said, names, phrases):
+    from jarvie.briefs import company_names
+
+    assert company_names(said) == (names, phrases)
+
+
+def test_descriptions_given_as_companies_move_to_notes(profile_path):
+    from jarvie import briefs
+
+    bid = briefs.start("discover_postings")
+    a = briefs.answer(
+        bid,
+        {
+            "include_companies": "Eli Lilly or promising start ups",
+            "exclude_companies": "Merck and Johnson and Johnson",
+        },
+    )["answers"]
+    assert a["include_companies"] == ["Eli Lilly"]
+    assert a["exclude_companies"] == ["Merck", "Johnson and Johnson"]
+    assert a["notes"] == "promising start ups"
+
+
+def test_failed_jobs_can_be_retried_from_the_dashboard(profile_path):
+    job_id = jobs.enqueue("discover_postings", {"ai_score": 0})
+    jobs.claim_next()
+    jobs.fail(job_id, "no handler for discover_postings")
+    web = TestClient(create_app())
+    assert "Retry" in web.get("/jobs").text
+    web.post(f"/jobs/{job_id}/retry")
+    job = jobs.get(job_id)
+    assert job["status"] == "queued" and job["error"] is None
+    assert "a failed job" in web.post(f"/jobs/{job_id}/retry").text

@@ -8,6 +8,7 @@ answered and only then puts the job on the queue, so no expensive run starts on 
 half-specified request.
 """
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -35,7 +36,7 @@ CHANNELS = ("voice", "text", "dashboard")
 class Question:
     key: str
     prompt: str  # how Jarvie asks it, spoken or shown
-    type: str  # 'text', 'int', 'bool', 'choice' (one of), 'choices' (some of), 'list'
+    type: str  # 'text', 'int', 'bool', 'choice' (one of), 'choices' (some of), 'list', 'names'
     required: bool = True
     choices: tuple[str, ...] = ()
     default: object = None  # used when an optional question is left unanswered
@@ -81,12 +82,12 @@ QUESTIONS: dict[str, tuple[Question, ...]] = {
         Question(
             "include_companies",
             "Any companies or labs to put first? Names only; they're searched if they're "
-            "on your watchlist.",
-            "list",
+            "on your watchlist, or on the web when you search beyond the boards.",
+            "names",
             required=False,
             default=[],
         ),
-        Question("exclude_companies", "Any to skip?", "list", required=False, default=[]),
+        Question("exclude_companies", "Any to skip?", "names", required=False, default=[]),
         Question(
             "max_results",
             "About how many results do you want?",
@@ -209,12 +210,54 @@ def _split_list(value) -> list[str]:
     return [] if [i.lower() for i in items] in (["none"], ["any"], ["anywhere"]) else items
 
 
+# Words that make a "company" answer a description ("promising start ups") rather than a name.
+DESCRIPTION = re.compile(
+    r"\b(start[ -]?ups?|companies|company|firms?|big|large|small|promising|top|any|labs)\b", re.I
+)
+
+
+def company_names(value) -> tuple[list[str], list[str]]:
+    """Company names from an answer, plus any descriptive phrases (which belong in notes).
+
+    A list is taken as given. A string is split on commas, semicolons, "or", "/" and
+    "and", except that "Johnson and Johnson" stays whole (and "&" is never split).
+    "Procter and Gamble" would split, which is why the voice model passes lists.
+    "Big companies like Eli Lilly" gives the name "Eli Lilly" and keeps the phrase.
+    """
+    if isinstance(value, str):
+        parts = []
+        for chunk in re.split(r",|;|/|\bor\b", value):
+            pieces = [x.strip() for x in re.split(r"\band\b", chunk)]
+            # Rejoin "Johnson" + "Johnson" -> "Johnson and Johnson"; "&" is never split.
+            for piece in pieces:
+                if parts and piece and parts[-1].split()[-1:] == [piece] and piece[:1].isupper():
+                    parts[-1] = f"{parts[-1]} and {piece}"
+                else:
+                    parts.append(piece)
+    else:
+        parts = [str(v) for v in value]
+    names, phrases = [], []
+    for part in (p.strip(" .") for p in parts):
+        if not part or part.lower() in ("none", "any", "no"):
+            continue
+        if re.search(r"\b(like|such as|e\.g\.?)\s", part, re.I):
+            phrases.append(part)
+            part = re.split(r"\b(?:like|such as|e\.g\.?)\s", part, flags=re.I)[-1].strip(" .")
+        if DESCRIPTION.search(part):
+            phrases.append(part)
+        elif part:
+            names.append(part)
+    return list(dict.fromkeys(names)), list(dict.fromkeys(phrases))
+
+
 def _coerce(q: Question, value):
     """Turn a spoken or typed answer into the stored form, or raise BriefError."""
     if q.type == "text":
         return str(value).strip()
     if q.type == "list":
         return _split_list(value)
+    if q.type == "names":
+        return company_names(value)[0]
     if q.type == "bool":
         if isinstance(value, bool):
             return value
@@ -317,6 +360,15 @@ def answer(brief_id: int, answers: dict, channel: str = "voice") -> dict:
         raise BriefError(f"no such questions: {sorted(unknown)}")
     coerced = {k: _coerce(questions[k], v) for k, v in answers.items()}
     merged = {**brief["answers"], **coerced}
+    # Descriptions given as companies ("promising start ups") go to notes, not lost.
+    phrases = [
+        phrase
+        for k, v in answers.items()
+        if questions[k].type == "names"
+        for phrase in company_names(v)[1]
+    ]
+    if phrases and "notes" in questions:
+        merged["notes"] = "; ".join(filter(None, [merged.get("notes", ""), *phrases]))
     with connect() as conn:
         conn.execute(
             "UPDATE briefs SET answers = ?, last_channel = ?, updated_at = ? WHERE id = ?",

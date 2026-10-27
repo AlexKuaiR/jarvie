@@ -2,14 +2,15 @@
 {% block body %}
 <p class="muted">Spent today: ${{ "%.2f" % spent }}. The worker (<code>python -m jarvie.worker</code>) runs queued jobs.</p>
 <table>
-  <tr><th>#</th><th>Kind</th><th>Status</th><th>Created</th><th>Cost</th><th>Result</th></tr>
+  <tr><th>#</th><th>Kind</th><th>Status</th><th>Created</th><th>Cost</th><th>Result</th><th></th></tr>
   {% for j in items %}
   <tr>
     <td>{{ j.id }}</td><td>{{ j.kind }}</td>
     <td class="{{ 'ok' if j.status == 'done' else ('bad' if j.status == 'failed' else '') }}">{{ j.status }}</td>
     <td class="muted">{{ j.created_at[:16] }}</td><td>${{ "%.2f" % j.cost_usd }}</td>
     <td class="muted">{{ j.error or (j.result | tojson | truncate(200)) if j.result or j.error else "" }}</td>
+    <td>{% if j.status == 'failed' %}<form method="post" action="/jobs/{{ j.id }}/retry" class="inline"><button>Retry</button></form>{% endif %}</td>
   </tr>
-  {% else %}<tr><td colspan="6" class="muted">No jobs yet.</td></tr>{% endfor %}
+  {% else %}<tr><td colspan="7" class="muted">No jobs yet.</td></tr>{% endfor %}
 </table>
 {% endblock %}
