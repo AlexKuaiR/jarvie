@@ -41,6 +41,7 @@ class Question:
     default: object = None  # used when an optional question is left unanswered
     min: int | None = None
     max: int | None = None
+    words: tuple[tuple[str, int], ...] = ()  # spoken words an 'int' accepts, e.g. ("all", -1)
 
 
 # Question sets, one per job kind that runs a mass search. Kinds that act on one
@@ -94,6 +95,22 @@ QUESTIONS: dict[str, tuple[Question, ...]] = {
             default=25,
             min=1,
             max=200,
+        ),
+        # The two AI gates: a search with both off uses no model at all (free, no key).
+        Question(
+            "search_beyond_boards",
+            "Should I also search beyond the job boards, like lab pages, research "
+            "programs and company sites? That uses AI.",
+            "bool",
+        ),
+        Question(
+            "ai_score",
+            "How many of the results should AI score for fit and prestige? Say none, "
+            "a number, or all. The rest are saved unscored; you can score any of them later.",
+            "int",
+            min=0,
+            max=200,
+            words=(("none", 0), ("no", 0), ("zero", 0), ("all", -1), ("every", -1)),
         ),
         Question(
             "notes",
@@ -208,6 +225,9 @@ def _coerce(q: Question, value):
             return False
         raise BriefError(f"{q.key}: answer yes or no")
     if q.type == "int":
+        spoken = dict(q.words)
+        if isinstance(value, str) and value.strip().lower() in spoken:
+            return spoken[value.strip().lower()]
         try:
             number = int(value)
         except (TypeError, ValueError):

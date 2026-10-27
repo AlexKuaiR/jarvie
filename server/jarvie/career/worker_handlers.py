@@ -7,13 +7,18 @@ from . import research_agent
 
 @handler("score_posting")
 def score_posting(job: dict, ctx: WorkerContext, spend: Usage) -> dict:
-    return research_agent.score_posting(job, ctx.get_agent(), ctx.get_profile(), spend)
+    return research_agent.score_posting(job, ctx.get_agent, ctx.get_profile(), spend)
 
 
-@handler("discover_postings")
+def _search_uses_ai(params: dict) -> bool:
+    return int(params.get("ai_score", 0)) != 0 or bool(params.get("search_beyond_boards"))
+
+
+@handler("discover_postings", uses_ai=_search_uses_ai)
 def discover_postings(job: dict, ctx: WorkerContext, spend: Usage) -> dict:
+    # ctx.get_agent is passed uncalled: a board-only search never creates a model.
     return research_agent.discover_postings(
-        job, ctx.get_agent(), ctx.get_profile(), spend, ctx.extra.get("http_client")
+        job, ctx.get_agent, ctx.get_profile(), spend, ctx.extra.get("http_client")
     )
 
 

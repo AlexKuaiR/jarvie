@@ -24,7 +24,7 @@ def find_contacts(job: dict, ctx: WorkerContext, spend: Usage) -> dict:
     return result
 
 
-@handler("find_email")
+@handler("find_email", uses_ai=lambda params: False)  # Hunter, not a model
 def find_email(job: dict, ctx: WorkerContext, spend: Usage) -> dict:
     return research.find_email(job, ctx.get_email_finder())
 

@@ -7,6 +7,7 @@ the voice model only ever sees structured, checked results.
 
 import asyncio
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from loguru import logger
@@ -185,9 +186,20 @@ def make_save_posting(
     return save_posting
 
 
-def score_posting(job: dict, model: AgentModel, profile: CareerProfile, spend: Usage) -> dict:
-    """One posting from a URL or pasted text (e.g. from Handshake): read, score, save."""
+def score_posting(
+    job: dict, get_model: Callable[[], AgentModel], profile: CareerProfile, spend: Usage
+) -> dict:
+    """Score postings: saved ones (posting_ids), or one new one from a URL or pasted text
+    (e.g. from Handshake), which is read, scored and saved."""
     params = job["params"]
+    if params.get("posting_ids"):
+        found = [postings.get(int(i)) for i in params["posting_ids"]]
+        missing = [i for i, p in zip(params["posting_ids"], found) if p is None]
+        if missing:
+            raise ValueError(f"no postings {missing}")
+        log = SaveLog()
+        stopped = score_saved(found, get_model(), profile, spend, job["id"], log)
+        return {"scored": sorted(set(log.saved)), "errors": log.errors, "stopped_early": stopped}
     log = SaveLog()
     if params.get("url"):
         source = "handshake" if "joinhandshake.com" in params["url"] else "web"
@@ -204,8 +216,8 @@ def score_posting(job: dict, model: AgentModel, profile: CareerProfile, spend: U
         )
         fetches = 0
     else:
-        raise ValueError("score_posting needs a url or text")
-    result = model.run(
+        raise ValueError("score_posting needs posting_ids, a url or text")
+    result = get_model().run(
         system_prompt(profile),
         prompt,
         [make_save_posting(log, job["id"], source, tuple(profile.resumes))],
@@ -216,34 +228,24 @@ def score_posting(job: dict, model: AgentModel, profile: CareerProfile, spend: U
     return {"saved": log.saved, "errors": log.errors, "note": result.text[:500]}
 
 
-def _budget() -> float:
-    return float(os.getenv("CAREER_JOB_BUDGET_USD", "3.00"))
-
-
-def discover_postings(
-    job: dict, model: AgentModel, profile: CareerProfile, spend: Usage, http_client=None
-) -> dict:
-    """A brief-driven search: job boards first (free), then the agent scores the best few
-    and, for research positions, looks for openings the boards don't list."""
-    params = job["params"]
-    criteria = criteria_from(profile, params)
-    max_results = int(params.get("max_results", 25))
-    found = asyncio.run(
-        ingest(profile, criteria, http_client, max_results=max_results, job_id=job["id"])
-    )
-
+def score_saved(
+    items: list[dict],
+    model: AgentModel,
+    profile: CareerProfile,
+    spend: Usage,
+    job_id: int | None,
+    log: SaveLog,
+    notes: str = "",
+) -> bool:
+    """Score saved postings, 8 per model call, until the job budget runs out.
+    Returns True if it stopped early for the budget."""
     system = system_prompt(profile)
     names = tuple(profile.resumes)
-    log = SaveLog()
     budget = _budget()
-    stopped_early = False
-    to_score = [postings.get(i) for i in found["posting_ids"]]
-    to_score = [p for p in to_score if p and p["fit_score"] is None]
-    for start in range(0, len(to_score), 8):
+    for start in range(0, len(items), 8):
         if spend.cost_usd >= budget:
-            stopped_early = True
-            break
-        chunk = to_score[start : start + 8]
+            return True
+        chunk = items[start : start + 8]
         listing = "\n\n".join(
             f"### posting_id {p['id']}: {p['title']} at {p['company']} ({p['location'] or 'location?'})\n"
             f"url: {p['url']}\n{(p['raw_text'] or '')[:2500]}"
@@ -251,33 +253,87 @@ def discover_postings(
         )
         prompt = (
             "Score each posting below and call save_posting once per posting with its "
-            "posting_id. Extra notes from the user for this search: "
-            f"{params.get('notes') or 'none'}.\n\n{listing}"
+            f"posting_id. Extra notes from the user: {notes or 'none'}.\n\n{listing}"
         )
         result = model.run(
-            system, prompt, [make_save_posting(log, job["id"], "web", names)], web_search=4
+            system, prompt, [make_save_posting(log, job_id, "web", names)], web_search=4
         )
         spend.add(result.usage)
+    return False
 
-    if "research" in criteria.kinds and spend.cost_usd < budget and not params.get("skip_web"):
-        prompt = (
-            "Search the web for research positions for this student that job boards miss: "
-            "undergraduate research programs, REUs, lab openings and summer research "
-            f"fellowships in {', '.join(criteria.fields)}"
-            f"{' for ' + criteria.term if criteria.term else ''}. Prefer official program "
-            "or lab pages. Save each real, currently open opportunity with save_posting "
-            "(kind research, with its url); at most 8. Skip anything you can't verify is open."
+
+def _budget() -> float:
+    return float(os.getenv("CAREER_JOB_BUDGET_USD", "3.00"))
+
+
+def discover_postings(
+    job: dict,
+    get_model: Callable[[], AgentModel],
+    profile: CareerProfile,
+    spend: Usage,
+    http_client=None,
+) -> dict:
+    """A brief-driven search. Job boards first (free, no model); then, only as the brief
+    allows, AI scores the top ai_score results (-1 = all) and, if search_beyond_boards,
+    searches the open web for openings the boards don't list. With both off the model
+    is never created, so the search works with no key and costs nothing."""
+    params = job["params"]
+    criteria = criteria_from(profile, params)
+    max_results = int(params.get("max_results", 25))
+    ai_score = int(params.get("ai_score", 0))
+    beyond = bool(params.get("search_beyond_boards", False))
+    found = asyncio.run(
+        ingest(profile, criteria, http_client, max_results=max_results, job_id=job["id"])
+    )
+
+    log = SaveLog()
+    stopped_early = False
+    # posting_ids come back best match first, so "top N" means the strongest N.
+    to_score = [
+        p for i in found["posting_ids"] if (p := postings.get(i)) and p["fit_score"] is None
+    ]
+    if ai_score >= 0:
+        to_score = to_score[:ai_score]
+    if to_score:
+        stopped_early = score_saved(
+            to_score, get_model(), profile, spend, job["id"], log, params.get("notes") or ""
         )
-        result = model.run(
-            system,
-            prompt,
-            [make_save_posting(log, job["id"], "web", names)],
-            web_search=8,
-            web_fetch=6,
-        )
-        spend.add(result.usage)
-    elif "research" in criteria.kinds:
-        stopped_early = stopped_early or spend.cost_usd >= budget
+
+    if beyond:
+        if spend.cost_usd >= _budget():
+            stopped_early = True
+        else:
+            kinds = " and ".join(
+                {"internship": "internships", "research": "research positions"}[k]
+                for k in criteria.kinds
+            )
+            prompt = (
+                f"Search the web for {kinds} for this student that the big job boards miss: "
+                "company career pages, undergraduate research programs, REUs, lab openings "
+                f"and summer fellowships in {', '.join(criteria.fields)}"
+                f"{' for ' + criteria.term if criteria.term else ''}. "
+                + (
+                    f"Check these first: {', '.join(criteria.include_companies)}. "
+                    if criteria.include_companies
+                    else ""
+                )
+                + (
+                    f"Skip these: {', '.join(criteria.exclude_companies)}. "
+                    if criteria.exclude_companies
+                    else ""
+                )
+                + f"Notes from the user: {params.get('notes') or 'none'}. Prefer official "
+                "pages. Save each real, currently open opportunity with save_posting (with its "
+                "url); at most 8. Skip anything you can't verify is open."
+            )
+            result = get_model().run(
+                system_prompt(profile),
+                prompt,
+                [make_save_posting(log, job["id"], "web", tuple(profile.resumes))],
+                web_search=8,
+                web_fetch=6,
+            )
+            spend.add(result.usage)
 
     low = [
         pid
@@ -287,11 +343,17 @@ def discover_postings(
         and p["prestige"] < int(params.get("min_prestige", profile.min_prestige))
     ]
     logger.info(
-        "discover job {}: saved {}, scored {}", job["id"], found["saved"], len(set(log.saved))
+        "discover job {}: saved {}, scored {}, used AI: {}",
+        job["id"],
+        found["saved"],
+        len(set(log.saved)),
+        bool(to_score or beyond),
     )
     return {
         "from_job_boards": found["saved"],
         "scored": sorted(set(log.saved)),
+        "unscored": len(found["posting_ids"]) - len(to_score),
+        "used_ai": bool(to_score or beyond),
         "below_min_prestige": sorted(low),
         "dropped": found["dropped"],
         "errors": found["errors"] + log.errors,

@@ -50,6 +50,11 @@ def back(path: str, error: str | None = None) -> RedirectResponse:
 
 
 def _hint(q: briefs.Question) -> str:
+    if q.words:
+        first_word = {}  # one word per value, e.g. none (0) and all (-1)
+        for word, value in q.words:
+            first_word.setdefault(value, word)
+        return " / ".join([*first_word.values(), "a number"])
     if q.choices:
         return " / ".join(q.choices)
     if q.default not in (None, "", []):
@@ -72,7 +77,10 @@ def add_brief_and_job_routes(app: FastAPI) -> None:
     def briefs_page(request: Request, error: str | None = None):
         items = []
         for b in briefs.open_briefs():
-            b["display"] = {k: _display(v) for k, v in b["answers"].items()}
+            b["display"] = {
+                k: "all" if k == "ai_score" and v == -1 else _display(v)
+                for k, v in b["answers"].items()
+            }
             items.append(b)
         questions = {
             kind: [{**q.__dict__, "hint": _hint(q)} for q in qs]

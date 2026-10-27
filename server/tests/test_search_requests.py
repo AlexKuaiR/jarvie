@@ -107,7 +107,11 @@ def test_exclude_and_include_use_loose_matching(profile_path):
 
 
 def test_no_worker_means_a_warning(profile_path):
-    started = call(start_brief, kind="discover_postings", answers={"term": "Summer 2027"})
+    started = call(
+        start_brief,
+        kind="discover_postings",
+        answers={"term": "Summer 2027", "search_beyond_boards": "no", "ai_score": "none"},
+    )
     result = call(submit_brief, brief_id=started["brief_id"])
     assert result["worker_running"] is False and "jarvie.worker" in result["tell_user"]
     assert "jarvie.worker" in call(job_status, job_id=result["job_id"])["tell_user"]

@@ -42,6 +42,11 @@ async def start_brief(params: FunctionCallParams, kind: str, answers: dict | Non
     answer_brief. If open_briefs shows one of the same kind already open, continue that
     one instead of starting another.
 
+    For "discover_postings", two questions decide whether AI is used at all; always ask
+    them, plainly: search_beyond_boards (AI web search beyond the job boards) and
+    ai_score (how many results AI scores: none, a number, or all). Answering no and
+    none makes a free search that uses only the job boards.
+
     Answers from the user's profile are pre-filled, but they are only defaults: pass
     everything the user already said in their request as answers, which replaces them
     (e.g. "find me five paid biotech internships" -> {"fields": "biotech",

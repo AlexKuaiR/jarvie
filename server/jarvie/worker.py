@@ -70,16 +70,24 @@ class WorkerContext:
 
 Handler = Callable[[dict, WorkerContext, Usage], dict]
 HANDLERS: dict[str, Handler] = {}
+# kind -> whether a job with these params calls a model. Jobs that don't (a board-only
+# search, an email lookup) still run after the daily AI budget is spent.
+USES_AI: dict[str, Callable[[dict], bool]] = {}
 # Things to do every loop besides jobs, e.g. send scheduled email. Each takes the context.
 TICKS: list[Callable[[WorkerContext], None]] = []
 
 
-def handler(kind: str):
+def handler(kind: str, uses_ai: Callable[[dict], bool] = lambda params: True):
     def register(fn: Handler) -> Handler:
         HANDLERS[kind] = fn
+        USES_AI[kind] = uses_ai
         return fn
 
     return register
+
+
+def uses_ai(job: dict) -> bool:
+    return USES_AI.get(job["kind"], lambda params: True)(job["params"])
 
 
 def _register_all() -> None:
@@ -121,15 +129,27 @@ def run_pending(ctx: WorkerContext, stop: threading.Event | None = None) -> int:
     _register_all()
     done = 0
     while stop is None or not stop.is_set():
-        if jobs.spent_today() >= daily_budget():
-            logger.warning("daily budget ${:.2f} reached; leaving jobs queued", daily_budget())
-            break
-        job = jobs.claim_next()
+        if jobs.spent_today() < daily_budget():
+            job = jobs.claim_next()
+        else:
+            job = _claim_free()
+            if job is None and jobs.queued():
+                logger.warning(
+                    "daily budget ${:.2f} reached; leaving AI jobs queued", daily_budget()
+                )
         if job is None:
             break
         run_one(job, ctx)
         done += 1
     return done
+
+
+def _claim_free() -> dict | None:
+    """The oldest queued job that uses no model, for when the AI budget is spent."""
+    for job in jobs.queued():
+        if not uses_ai(job) and (claimed := jobs.claim(job["id"])):
+            return claimed
+    return None
 
 
 def run_ticks(ctx: WorkerContext) -> None:

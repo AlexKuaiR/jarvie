@@ -175,7 +175,11 @@ def test_brief_by_voice_prefills_from_profile(profile_path):
     assert "term" in [q["key"] for q in started["questions"]]
     bid = started["brief_id"]
     assert (
-        call(answer_brief_tool, brief_id=bid, answers={"term": "Summer 2027"})["remaining"][0][
+        call(
+            answer_brief_tool,
+            brief_id=bid,
+            answers={"term": "Summer 2027", "search_beyond_boards": "no", "ai_score": "none"},
+        )["remaining"][0][
             "required"
         ]
         is False
@@ -241,7 +245,10 @@ def test_dashboard_status_and_brief_forms(web):
     assert b["last_channel"] == "dashboard"
     r = web.post(f"/briefs/{b['id']}/submit")
     assert "still need" in r.text  # error shown, nothing queued
-    web.post(f"/briefs/{b['id']}/answer", data={"term": "Summer 2027", "notes": ""})
+    web.post(
+        f"/briefs/{b['id']}/answer",
+        data={"term": "Summer 2027", "notes": "", "search_beyond_boards": "no", "ai_score": "all"},
+    )
     web.post(f"/briefs/{b['id']}/submit")
     assert briefs.get(b["id"])["status"] == "submitted"
     assert jobs.recent()[0]["kind"] == "discover_postings"

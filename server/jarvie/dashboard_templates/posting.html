@@ -10,6 +10,10 @@
   <div class="card"><div class="muted">Applies via</div>{{ p.ats or "unknown" }}</div>
 </div>
 <h3>Scores</h3>
+<form method="post" action="/postings/{{ p.id }}/score" style="margin-bottom:8px">
+  <button class="{{ 'primary' if p.fit_score is none }}">{{ "Score with AI" if p.fit_score is none else "Re-score with AI" }}</button>
+  <span class="muted">uses AI credits</span>
+</form>
 <table>
   {% for key in ["prestige", "competitiveness", "ownership"] %}
   <tr><th>{{ key }}</th><td>{{ p[key] if p[key] is not none else "-" }}</td><td class="muted">{{ p[key ~ "_reason"] or "" }}</td></tr>

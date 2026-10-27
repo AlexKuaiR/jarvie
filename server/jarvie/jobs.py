@@ -97,6 +97,23 @@ def claim_next() -> dict | None:
     return _decode(r) if r else None
 
 
+def queued() -> list[dict]:
+    with connect() as conn:
+        rows = conn.execute("SELECT * FROM jobs WHERE status = 'queued' ORDER BY id").fetchall()
+    return [_decode(r) for r in rows]
+
+
+def claim(job_id: int) -> dict | None:
+    """Claim one specific queued job (None if another worker got it first)."""
+    with connect() as conn:
+        r = conn.execute(
+            """UPDATE jobs SET status = 'running', started_at = ?
+               WHERE id = ? AND status = 'queued' RETURNING *""",
+            (_now(), job_id),
+        ).fetchone()
+    return _decode(r) if r else None
+
+
 def finish(
     job_id: int,
     result: dict,

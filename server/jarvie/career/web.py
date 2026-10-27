@@ -69,6 +69,13 @@ def add_routes(app: FastAPI) -> None:
             error=error,
         )
 
+    @app.post("/postings/{posting_id}/score")
+    def score(posting_id: int):
+        if postings.get(posting_id) is None:
+            return back("/", f"no posting {posting_id}")
+        jobs.enqueue("score_posting", {"posting_ids": [posting_id]})
+        return back("/jobs")
+
     @app.post("/postings/{posting_id}/resume")
     async def set_resume(posting_id: int, request: Request):
         form = await request.form()

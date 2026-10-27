@@ -70,7 +70,8 @@ Nothing is pushed.
 | Hard filters | Internship or research, field (keyword tags), unpaid, term, location, graduation year window, include/exclude companies; a cheap relevance rank so capped searches keep the best | Automatic |
 | Handshake | Paste a link or the posting text; the agent reads and scores it. Never scraped | "Add this posting: …" (voice or text box) |
 | Scoring | Prestige, competitiveness and ownership of work (1–5 each, with reasons), fit score 0–1 with reasons, skills, application steps, deadline, pay | Automatic in searches |
-| Searches | Brief → job boards → agent scores in chunks of 8 → web search for research positions, REUs and lab openings | "Find me internships", answered by voice, text or dashboard |
+| Searches | Brief → job boards (free) → two AI gates you answer each time: **search beyond the boards?** (AI web search for company pages, research programs, REUs, labs) and **how many results should AI score?** (none, a number, or all; the top-ranked go first). Answering no and none gives a free search that never loads a model, needs no key, and still runs after the daily AI budget is spent | "Find me internships", answered by voice, text or dashboard |
+| Score on demand | Score any saved posting later, only the ones you care about | "Score the CACI one", or "Score with AI" on a posting page |
 | Tracking | Interested, applied, OA, interviewing, offer, rejected, withdrawn; history with notes; coffee-chat flag; pipeline summary | Voice ("I got an OA from Acme") or the dashboard |
 | People finder | Public pages only, LinkedIn refused, an evidence URL required for every person and every alumni claim, capped per job | Brief kind `find_contacts`: "find Berkeley alumni recruiters at Genentech" |
 | Email lookup | Hunter finder and verifier; addresses that verify invalid are dropped; works without the career package | "Find the email for Dana Lee at gene.com", or the button on the Contacts page |
@@ -257,7 +258,8 @@ http://localhost:7861.
 - **Postings:** filter by field, open one, set its status to `applied` with a note, and mark a
   coffee chat.
 - **Pipeline:** your counts by stage.
-- **Searches:** start `discover_postings`. Your profile answers are pre-filled; type a term and
+- **Searches:** start `discover_postings`. Your profile answers are pre-filled; type a term,
+  answer `no` to search beyond the boards and `none` for AI scoring (a free search), and
   save. Clicking Start search with a required answer missing shows an error. Then submit.
 - **Contacts:** add someone yourself, for example a friend's address you control.
 - **Jobs:** the search you submitted is waiting for the worker.
@@ -288,7 +290,7 @@ Add `ANTHROPIC_API_KEY` and `HUNTER_API_KEY` to `server/.env`, start the worker 
 1. **Score one posting, about $0.05–0.30.** Paste a posting's text: "add this posting: …". On
    the Postings tab it should show scores with reasons.
 2. **A small search, about $0.50–3.** Run a `discover_postings` brief with
-   `max_results = 8`. Check the Jobs tab for cost, then read the reasons on a few postings.
+   `max_results = 8`, AI scoring `all`, and search beyond the boards `yes`. Check the Jobs tab for cost, then read the reasons on a few postings.
 3. **People.** Run a `find_contacts` brief: target = one company, roles = "university recruiter",
    schools = berkeley, max 3, draft after = no. Check that every contact has source links and
    that the emails show as verified.

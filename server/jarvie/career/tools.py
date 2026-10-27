@@ -168,6 +168,22 @@ async def add_posting(params: FunctionCallParams, url_or_text: str):
     await params.result_callback({"started": True, "job_id": job_id, **jobs.worker_note()})
 
 
+async def score_postings(params: FunctionCallParams, posting_ids: list[int]):
+    """Have AI score saved postings (fit, prestige, competitiveness, ownership), in the
+    background. Searches that stick to the job boards save postings unscored.
+
+    Call this for "score the CACI one" or "score those three" (find ids with
+    list_postings). It uses AI credits, so score only the ones the user asks about.
+    """
+    ids = [int(i) for i in posting_ids]
+    missing = [i for i in ids if postings.get(i) is None]
+    if not ids or missing:
+        await params.result_callback({"error": f"no postings {missing or 'given'}"})
+        return
+    job_id = jobs.enqueue("score_posting", {"posting_ids": ids})
+    await params.result_callback({"started": True, "job_id": job_id, **jobs.worker_note()})
+
+
 async def write_cover_letter(params: FunctionCallParams, posting_id: int, notes: str | None = None):
     """Have Claude write a tailored cover letter for a saved posting, in the background.
 
@@ -241,6 +257,7 @@ async def list_documents(params: FunctionCallParams, posting_id: int | None = No
 
 
 CAREER_TOOLS = [
+    score_postings,
     write_cover_letter,
     write_essay,
     list_documents,

@@ -129,6 +129,8 @@ def test_discovery_from_brief_ingests_then_scores_then_searches_web(prof):
             "fields": "machine learning, biology, biotech",
             "term": "Summer 2027",
             "max_results": 10,
+            "search_beyond_boards": "yes",
+            "ai_score": "all",
         },
     )
     job_id = briefs.submit(bid)
@@ -150,7 +152,13 @@ def test_discovery_from_brief_ingests_then_scores_then_searches_web(prof):
 def test_discovery_stops_at_job_budget(prof, monkeypatch):
     monkeypatch.setenv("CAREER_JOB_BUDGET_USD", "0.05")
     job_id = jobs.enqueue(
-        "discover_postings", {"kinds": ["internship", "research"], "max_results": 25}
+        "discover_postings",
+        {
+            "kinds": ["internship", "research"],
+            "max_results": 25,
+            "ai_score": -1,
+            "search_beyond_boards": True,
+        },
     )
     agent = FakeAgent(score_everything, cost=0.10)
     worker.run_pending(ctx_with(agent, prof))
@@ -170,7 +178,7 @@ def test_worker_records_expected_failures_and_crashes(prof):
     empty = jobs.enqueue("score_posting", {})
     worker.run_pending(ctx_with(FakeAgent(fail), prof))
     assert "ANTHROPIC_API_KEY" in jobs.get(bad)["error"]
-    assert "needs a url or text" in jobs.get(empty)["error"]
+    assert "needs posting_ids, a url or text" in jobs.get(empty)["error"]
 
     def crash(prompt, tools):
         raise RuntimeError("bug")

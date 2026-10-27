@@ -12,7 +12,11 @@ def test_voice_then_text_then_submit():
     # Started by voice...
     briefs.answer(bid, {"kinds": "both", "fields": "machine learning and biotech"}, "voice")
     # ...finished by typing in the localhost text box.
-    brief = briefs.answer(bid, {"term": "Summer 2027", "locations": "none"}, "text")
+    brief = briefs.answer(
+        bid,
+        {"term": "Summer 2027", "locations": "none", "search_beyond_boards": "no", "ai_score": 3},
+        "text",
+    )
     assert brief["answers"]["kinds"] == ["internship", "research"]
     assert brief["answers"]["fields"] == ["machine learning", "biotech"]
     assert brief["answers"]["locations"] == []
