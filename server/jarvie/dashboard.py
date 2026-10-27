@@ -125,11 +125,13 @@ def add_brief_and_job_routes(app: FastAPI) -> None:
 
 def create_app() -> FastAPI:
     from .career import web as career_web
+    from .outreach import web as outreach_web
 
     NAV.clear()
     app = FastAPI(title="Jarvie dashboard", docs_url=None, redoc_url=None)
     career_web.add_routes(app)
     add_brief_and_job_routes(app)
+    outreach_web.add_routes(app)
     return app
 
 

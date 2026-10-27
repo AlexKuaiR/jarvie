@@ -38,7 +38,8 @@ def add(
     notes: str | None = None,
     found_by_job: int | None = None,
 ) -> int:
-    """Save a person, or return the existing id if their email is already stored.
+    """Save a person, or return the existing id if they're already stored (same email, or
+    same name and company when there's no email).
 
     People the research agent finds (source "agent") need at least one evidence URL:
     where they were found, and the page backing any alumni claim, so nobody is
@@ -57,8 +58,15 @@ def add(
     with connect() as conn:
         if email:
             existing = conn.execute("SELECT id FROM contacts WHERE email = ?", (email,)).fetchone()
-            if existing:
-                return existing["id"]
+        else:
+            # Without an email, the same name at the same place is the same person.
+            existing = conn.execute(
+                """SELECT id FROM contacts WHERE name = ? COLLATE NOCASE
+                   AND COALESCE(company, '') = COALESCE(?, '') COLLATE NOCASE""",
+                (name.strip(), company),
+            ).fetchone()
+        if existing:
+            return existing["id"]
         cur = conn.execute(
             """INSERT INTO contacts
                (name, company, role, is_recruiter_or_admissions, alumni_of, source,
