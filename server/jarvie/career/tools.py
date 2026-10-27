@@ -117,8 +117,9 @@ async def set_application_status(
 
     Call this when the user says "I applied to the Acme one", "got an OA from Acme",
     "Acme rejected me", "I have an interview Friday" (note the date in note). Find the
-    posting_id first with list_postings(query="Acme"); it works for any saved posting,
-    whether or not it has a status yet.
+    posting_id first with list_postings(query=...) using the words the user said; it
+    works for any saved posting, with or without a status. Never say a posting is
+    still being added without checking job_status first: recent adds are usually done.
 
     Args:
         status: interested, applied, oa, interviewing, offer, rejected or withdrawn.
@@ -155,9 +156,11 @@ async def add_posting(params: FunctionCallParams, url_or_text: str):
     """Save and score one posting the user gives: a link, or pasted posting text.
 
     Call this when the user pastes a Handshake link or posting text, or gives a URL.
-    It runs in the background (the research agent reads and scores it); tell the user,
-    and use job_status later. Handshake links usually need login, so suggest pasting
-    the posting text if the link alone fails.
+    It runs in the background (the research agent reads and scores it) and usually
+    takes under a minute. Tell the user, then check job_status before saying anything
+    about it: when the job is done, its result's "saved" list holds the posting_id to
+    use for set_application_status. If it failed, say why; many company career sites
+    and Handshake can't be read from a link, so suggest pasting the posting text.
     """
     text = url_or_text.strip()
     if not text:

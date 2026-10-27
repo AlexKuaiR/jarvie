@@ -117,3 +117,27 @@ def test_search_by_company_or_title():
     postings.set_status(caci, "applied")
     assert [p["id"] for p in postings.search(query="caci", status="none")] == [caci2]
     assert postings.search(query="  ") == postings.search()  # blank means no filter
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "NVIDIA Ignite SWE internship",
+        "the NVIDIA Ignite Suite one",  # speech-to-text heard "SWE" as "Suite"
+        "Ignite software engineering",
+        "nvidia ignite",
+    ],
+)
+def test_spoken_names_find_the_posting(said):
+    ignite = add_posting(
+        company="NVIDIA", title="2027 Ignite Internships: Software Engineering", url="https://n/1"
+    )
+    add_posting(company="NVIDIA", title="PhD Research Intern - Embodied Agents", url="https://n/2")
+    add_posting(company="Ignite Labs", title="Marketing Intern", url="https://i/1")
+    assert [p["id"] for p in postings.search(query=said)] == [ignite]
+
+
+def test_short_abbreviations_match_whole_words():
+    mle = add_posting(company="Acme", title="Machine Learning Engineer Intern", url="https://a/2")
+    add_posting(company="Acme", title="HTML Email Developer Intern", url="https://a/3")
+    assert [p["id"] for p in postings.search(query="acme ML")] == [mle]

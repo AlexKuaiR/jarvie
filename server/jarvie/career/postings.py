@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 
 from ..config import TZ
@@ -155,7 +156,10 @@ def search(
 ) -> list[dict]:
     """Postings matching every filter given. status "none" means not acted on yet.
 
-    query matches part of the company or title, ignoring case ("caci", "quant").
+    query is how you'd say it ("the NVIDIA Ignite SWE internship"): matched word by word
+    against company and title, ignoring case, filler words and abbreviations (SWE =
+    software engineering). The postings matching the most words come back, so one
+    misheard word ("Suite" for "SWE") doesn't hide the right one.
     """
     if sort not in SORTS:
         raise ValueError(f"sort must be one of {sorted(SORTS)}")
@@ -175,15 +179,14 @@ def search(
     elif status:
         sql += " AND applications.status = ?"
         args.append(status)
-    if query and query.strip():
-        # LIKE ignores case for ASCII; % on both sides matches anywhere in the text.
-        sql += " AND (postings.company LIKE ? OR postings.title LIKE ?)"
-        args += [f"%{query.strip()}%"] * 2
     if min_fit is not None:
         sql += " AND fit_score >= ?"
         args.append(min_fit)
-    sql += f" ORDER BY {SORTS[sort]} LIMIT ?"
-    args.append(limit)
+    sql += f" ORDER BY {SORTS[sort]}"
+    words = query_words(query or "")
+    if not words:
+        sql += " LIMIT ?"
+        args.append(limit)
     with connect() as conn:
         rows = conn.execute(sql, args).fetchall()
     out = []
@@ -191,7 +194,47 @@ def search(
         item = _decode(r)
         item["has_coffee_chat"] = bool(item["has_coffee_chat"])
         out.append(item)
+    if words:
+        # Keep the postings that match the most query words, in the chosen sort order.
+        scored = [(match_count(p, words), p) for p in out]
+        best = max((n for n, _ in scored), default=0)
+        out = [p for n, p in scored if n == best and n > 0][:limit]
     return out
+
+
+# Spoken words that say nothing about which posting it is.
+FILLER = set(
+    "the a an at for of in on to my that this one job jobs role position program "
+    "intern interns internship internships summer fall spring winter 2026 2027 2028".split()
+)
+# Abbreviations people say -> words that appear in titles.
+ABBREVIATIONS = {
+    "swe": ["swe", "software"],
+    "sde": ["sde", "software"],
+    "sw": ["software"],
+    "mle": ["mle", "machine learning"],
+    "ml": ["ml", "machine learning"],
+    "ai": ["ai", "artificial intelligence"],
+    "qr": ["quant", "quantitative"],
+    "qt": ["quant", "quantitative"],
+    "pm": ["pm", "product"],
+    "ds": ["data science"],
+}
+
+
+def query_words(query: str) -> list[list[str]]:
+    """Each meaningful word of a query, as the alternatives that count as a match."""
+    words = re.findall(r"[a-z0-9+#&]+", query.lower())
+    return [ABBREVIATIONS.get(w, [w]) for w in words if w not in FILLER]
+
+
+def match_count(posting: dict, words: list[list[str]]) -> int:
+    text = f"{posting['company']} {posting['title']}".lower()
+    # \b at the start only, so "engineer" matches "engineering".
+    return sum(
+        any(re.search(rf"\b{re.escape(alt)}", text) for alt in alternatives)
+        for alternatives in words
+    )
 
 
 def set_status(posting_id: int, status: str, note: str | None = None) -> int:

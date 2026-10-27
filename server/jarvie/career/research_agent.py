@@ -225,6 +225,11 @@ def score_posting(
         web_fetch=fetches,
     )
     spend.add(result.usage)
+    if not log.saved:
+        # Nothing saved is a failure (e.g. a page that needs login or loads by script),
+        # so the job shows "failed" with the reason instead of a misleading "done".
+        hint = " Paste the posting's text instead." if params.get("url") else ""
+        raise ValueError(f"nothing saved: {result.text[:300]}{hint}")
     return {"saved": log.saved, "errors": log.errors, "note": result.text[:500]}
 
 

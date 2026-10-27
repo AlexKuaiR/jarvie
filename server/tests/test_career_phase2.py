@@ -99,8 +99,9 @@ def test_url_posting_allows_fetching(prof):
     job_id = jobs.enqueue("score_posting", {"url": "https://jobs.example.com/1"})
     worker.run_pending(ctx_with(agent, prof))
     assert agent.calls[0]["web_fetch"] == 2
-    assert jobs.get(job_id)["result"]["saved"] == []
-    assert "login wall" in jobs.get(job_id)["result"]["note"]
+    job = jobs.get(job_id)
+    assert job["status"] == "failed"  # not a misleading "done" with nothing saved
+    assert "login wall" in job["error"] and "Paste the posting's text" in job["error"]
 
 
 def test_bad_tool_arguments_are_returned_to_the_model(prof):
@@ -194,7 +195,10 @@ def test_daily_budget_leaves_jobs_queued(prof, monkeypatch):
     monkeypatch.setenv("JARVIE_DAILY_BUDGET_USD", "0.15")
     for _ in range(3):
         jobs.enqueue("score_posting", {"text": "x"})
-    ran = worker.run_pending(ctx_with(FakeAgent(lambda p, t: None, cost=0.10), prof))
+    def save_one(prompt, tools):
+        tools["save_posting"](company="A", title="B")
+
+    ran = worker.run_pending(ctx_with(FakeAgent(save_one, cost=0.10), prof))
     assert ran == 2
     assert [j["status"] for j in jobs.recent()] == ["queued", "done", "done"]
 
