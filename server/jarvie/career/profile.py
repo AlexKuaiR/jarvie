@@ -15,7 +15,7 @@ from .postings import KINDS
 WATCHLIST_SOURCES = {"greenhouse", "lever", "ashby", "simplify"}
 
 
-class ProfileError(Exception):
+class ProfileError(ValueError):
     """The profile file is missing or has a bad value; the message says which."""
 
 

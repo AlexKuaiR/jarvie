@@ -96,6 +96,19 @@ def save(company: str, title: str, source: str, **fields) -> int:
         return cur.lastrowid
 
 
+def update(posting_id: int, **fields) -> bool:
+    """Change fields of a saved posting by id (works for postings without a URL)."""
+    if not fields:
+        return False
+    values = _encode(fields)
+    sets = ", ".join(f"{k} = ?" for k in values)
+    with connect() as conn:
+        cur = conn.execute(
+            f"UPDATE postings SET {sets} WHERE id = ?", (*values.values(), posting_id)
+        )
+        return cur.rowcount > 0
+
+
 def get(posting_id: int) -> dict | None:
     with connect() as conn:
         r = conn.execute(
