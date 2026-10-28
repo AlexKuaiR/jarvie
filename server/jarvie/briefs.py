@@ -36,7 +36,8 @@ CHANNELS = ("voice", "text", "dashboard")
 class Question:
     key: str
     prompt: str  # how Jarvie asks it, spoken or shown
-    type: str  # 'text', 'int', 'bool', 'choice' (one of), 'choices' (some of), 'list', 'names'
+    type: str  # 'text', 'int', 'bool', 'choice' (one of), 'choices' (some of), 'list', 'names',
+    # 'resume' (one of your resumes, "default", or "auto")
     required: bool = True
     choices: tuple[str, ...] = ()
     default: object = None  # used when an optional question is left unanswered
@@ -166,8 +167,9 @@ QUESTIONS: dict[str, tuple[Question, ...]] = {
         ),
         Question(
             "resume",
-            "Which of your resumes should the emails draw on? Say default if it doesn't matter.",
-            "text",
+            "Which of your resumes should the emails draw on? Name one, say default, or say "
+            "match each person to pick per person from their role.",
+            "resume",
             required=False,
             default="",
         ),
@@ -250,6 +252,38 @@ def company_names(value) -> tuple[list[str], list[str]]:
     return list(dict.fromkeys(names)), list(dict.fromkeys(phrases))
 
 
+AUTO_RESUME = "auto"  # pick a resume per person, from their role and team
+DEFAULT_WORDS = ("", "default", "any", "either", "no preference", "doesn't matter")
+AUTO_WORDS = re.compile(r"\b(auto|match|each|per person|depend\w*|based on)\b", re.I)
+
+
+def resume_answer(value) -> str:
+    """A resume name from your profile, "default", or AUTO_RESUME, from a spoken answer.
+
+    "the SWE one" -> "swe"; "software resume for software roles, ML resume for AI roles"
+    names two resumes, so -> "auto" (each person gets the one matching their role).
+    """
+    from .career import profile  # imported here so outreach works without a profile
+    from .career.filters import tag_fields
+
+    text = str(value).strip()
+    if text.lower() in DEFAULT_WORDS:
+        return "default"
+    asked_auto = text.lower() == AUTO_RESUME or bool(AUTO_WORDS.search(text))
+    try:
+        p = profile.load()
+    except profile.ProfileError:
+        return AUTO_RESUME if asked_auto else text
+    named = {n for n in p.resumes if re.search(rf"\b{re.escape(n)}\b", text, re.I)}
+    fields = set(tag_fields(text, ""))
+    named |= {r.name for r in p.resumes.values() if fields & set(r.fields)}
+    if len(named) == 1:
+        return named.pop()  # "the swe one for each person" is still just swe
+    if len(named) > 1 or asked_auto:
+        return AUTO_RESUME
+    raise BriefError(f"resume: say one of {', '.join(p.resumes)}, default, or match each person")
+
+
 def _coerce(q: Question, value):
     """Turn a spoken or typed answer into the stored form, or raise BriefError."""
     if q.type == "text":
@@ -258,6 +292,8 @@ def _coerce(q: Question, value):
         return _split_list(value)
     if q.type == "names":
         return company_names(value)[0]
+    if q.type == "resume":
+        return resume_answer(value)
     if q.type == "bool":
         if isinstance(value, bool):
             return value

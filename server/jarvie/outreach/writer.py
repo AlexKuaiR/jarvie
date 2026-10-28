@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
+from ..briefs import AUTO_RESUME
 from ..llm import ClaudeWriter, LLMError, Usage, WriterModel, cached_system, write_many
 from . import contacts, messages
 
@@ -56,17 +57,27 @@ class Sender:
     background: str  # the resume text
 
 
-def load_sender(resume: str | None = None, posting: dict | None = None) -> Sender:
+def load_sender(
+    resume: str | None = None, posting: dict | None = None, contact: dict | None = None
+) -> Sender:
     """Your name and resume, from the career profile (shared with the job search).
 
     resume names one of your resumes; otherwise a related posting's resume is used, or
-    your default one.
+    your default one. resume "auto" picks for the contact: their role and team are
+    matched like a posting's title and fields (an ML manager gets your ML resume).
     """
     from ..career import profile
+    from ..career.filters import tag_fields
 
     p = profile.load()
     if not p.name:
         raise ValueError("add your name under [applicant] in career_profile.toml to sign emails")
+    if resume == AUTO_RESUME:
+        resume = None
+        if contact:
+            role = contact.get("role") or ""
+            team = " ".join(str(v) for v in (contact.get("features") or {}).values())
+            posting = {"title": role, "fields": tag_fields(role, team)}
     chosen = p.resume(resume) if resume else p.resume_for(posting) if posting else p.resume()
     return Sender(p.name, chosen.text())
 
@@ -151,7 +162,10 @@ def draft_outreach(
         from ..career import postings  # optional link to the job search
 
         posting = postings.get(int(p["posting_id"]))
-    sender = sender or load_sender(p.get("resume") or None, posting)
+    resume = p.get("resume") or None
+    per_person = sender is None and resume == AUTO_RESUME  # each contact gets their own resume
+    if sender is None and not per_person:
+        sender = load_sender(resume, posting)
 
     ids = [int(i) for i in p.get("contact_ids") or []]
     if not ids:
@@ -174,8 +188,11 @@ def draft_outreach(
         else:
             targets.append(c)
 
+    senders = [load_sender(resume, posting, c) if per_person else sender for c in targets]
     system = cached_system(SYSTEM)
-    prompts = [prompt_for(c, purpose, p.get("notes", ""), sender, posting) for c in targets]
+    prompts = [
+        prompt_for(c, purpose, p.get("notes", ""), me, posting) for c, me in zip(targets, senders)
+    ]
     if len(prompts) >= BATCH_THRESHOLD and isinstance(writer, ClaudeWriter):
         first_pass, usage = write_many(writer, system, prompts, DraftEmail)
         spend.add(usage)
@@ -190,8 +207,8 @@ def draft_outreach(
                 first_pass.append((None, str(e)))
 
     drafted, rejected = [], {}
-    for c, prompt, (draft, error) in zip(targets, prompts, first_pass):
-        problems = [error] if error else check_draft(draft, c, sender)
+    for c, me, prompt, (draft, error) in zip(targets, senders, prompts, first_pass):
+        problems = [error] if error else check_draft(draft, c, me)
         if problems and not error:
             # One retry, telling the writer exactly what to fix.
             retry = (
@@ -200,7 +217,7 @@ def draft_outreach(
             )
             draft, usage = writer.write(system, retry, DraftEmail)
             spend.add(usage)
-            problems = check_draft(draft, c, sender)
+            problems = check_draft(draft, c, me)
         if problems:
             rejected[c["id"]] = problems
             continue

@@ -32,7 +32,9 @@ def _brief_prefill(kind: str) -> dict:
     }
 
 
-async def start_brief(params: FunctionCallParams, kind: str, answers: dict | None = None):
+async def start_brief(
+    params: FunctionCallParams, kind: str, answers: dict | None = None, start: bool = False
+):
     """Start the questions for a big search, before anything runs.
 
     Call this when the user wants a broad search: "find me internships" uses kind
@@ -56,6 +58,8 @@ async def start_brief(params: FunctionCallParams, kind: str, answers: dict | Non
     Args:
         kind: "discover_postings" or "find_contacts".
         answers: Question key -> what the user already said, in their words.
+        start: True to start the search right away if nothing required is left (see
+            answer_brief).
     """
     try:
         brief_id = briefs.start(kind, prefill=_brief_prefill(kind))
@@ -68,13 +72,18 @@ async def start_brief(params: FunctionCallParams, kind: str, answers: dict | Non
             briefs.answer(brief_id, answers)
         except briefs.BriefError as e:
             result["error"] = f"{e}; the brief is open, fix that answer with answer_brief"
-    brief = briefs.get(brief_id)
-    result.update(answers=brief["answers"], questions=briefs.remaining(brief_id))
+    result.update(_maybe_start(brief_id, start and "error" not in result))
+    if not result.get("started"):
+        result["questions"] = briefs.remaining(brief_id)
     await params.result_callback(result)
 
 
 async def answer_brief(
-    params: FunctionCallParams, brief_id: int, answers: dict, channel: str = "voice"
+    params: FunctionCallParams,
+    brief_id: int,
+    answers: dict,
+    channel: str = "voice",
+    start: bool = False,
 ):
     """Record the user's answers to brief questions, in their words.
 
@@ -86,29 +95,58 @@ async def answer_brief(
     never one sentence; put descriptions such as "big companies" or "promising startups"
     in notes. If the result has an error,
     explain it and ask again. When "remaining" has no required questions left, read
-    the answers back in one sentence and offer to start with submit_brief.
+    the answers back in one sentence and offer to start.
+
+    Pass start=true when the user has asked for the search to run: they said "start",
+    "go", "yes", or their request already asked for results ("find them and draft
+    emails"). It starts in this same call once nothing required is left. Only say a
+    search is running when a result has "started": true; otherwise it hasn't started.
 
     Args:
         brief_id: From start_brief or open_briefs.
         answers: Question key -> the user's answer.
         channel: "text" if the user typed (long pasted requests usually are), else "voice".
+        start: True to start the search as soon as the required answers are in.
     """
     try:
-        brief = briefs.answer(brief_id, answers, channel if channel in briefs.CHANNELS else "voice")
+        briefs.answer(brief_id, answers, channel if channel in briefs.CHANNELS else "voice")
     except briefs.BriefError as e:
         await params.result_callback({"error": str(e)})
         return
-    await params.result_callback(
-        {"answers": brief["answers"], "remaining": briefs.remaining(brief_id)}
+    result = _maybe_start(brief_id, start)
+    if not result.get("started"):
+        result["remaining"] = briefs.remaining(brief_id)
+    await params.result_callback(result)
+
+
+def _maybe_start(brief_id: int, start: bool) -> dict:
+    """The brief's answers, and whether it started: it starts only if asked and ready."""
+    brief = briefs.get(brief_id)
+    missing = [q["key"] for q in briefs.remaining(brief_id) if q["required"]]
+    if start and not missing:
+        job_id = briefs.submit(brief_id)
+        return {
+            "answers": brief["answers"],
+            "started": True,
+            "job_id": job_id,
+            **jobs.worker_note(),
+        }
+    note = (
+        f"Not started: still need {', '.join(missing)}."
+        if missing
+        else "Not started yet. Ask whether to start, then call submit_brief (or answer_brief "
+        "with start=true). Don't say it's running until a result says started."
     )
+    return {"answers": brief["answers"], "started": False, "tell_user": note}
 
 
 async def submit_brief(params: FunctionCallParams, brief_id: int):
     """Start the search described by a brief. It runs in the background.
 
-    Only call this after the user agrees to start. Tell them it's queued and that
-    they can ask for its status; don't wait for it. If the result says the worker
-    isn't running, tell the user it won't start until they run the worker.
+    Call this once the user wants it to run: they agreed, or their request already
+    asked for the results. Tell them it's queued (with the job id) and that they can
+    ask for its status; don't wait for it. Never say a search is running unless a
+    result says "started": true.
     """
     try:
         job_id = briefs.submit(brief_id)

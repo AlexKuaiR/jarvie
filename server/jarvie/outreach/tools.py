@@ -137,7 +137,8 @@ async def draft_emails(
         notes: Anything the user wants mentioned, in their words.
         posting_id: A related saved posting, if any.
         resume: Which of the user's resumes to draw on (e.g. "swe", "mle", "qr"), if
-            they say; otherwise the posting's resume or their default.
+            they say; "auto" to pick per person from their role; otherwise the
+            posting's resume or their default.
     """
     if purpose not in messages.PURPOSES:
         await params.result_callback({"error": f"purpose must be one of {messages.PURPOSES}"})
