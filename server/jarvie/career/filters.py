@@ -141,6 +141,76 @@ def grad_years(text: str) -> list[int]:
     return sorted({int(y) for clause in GRAD_CLAUSE.findall(text) for y in YEAR.findall(clause)})
 
 
+# "Apply by December 11, 2026", "Deadline: 12/11/2026", "applications close Dec 11".
+DEADLINE_CUE = re.compile(
+    r"\b(deadline|apply by|applications? (?:close|due|are due|must be received)"
+    r"|closing date|closes on|no later than|submit by|due by|due date)\b[^.\n]{0,60}",
+    re.I,
+)
+MONTHS = {
+    m: i + 1
+    for i, names in enumerate(
+        [
+            "jan january",
+            "feb february",
+            "mar march",
+            "apr april",
+            "may",
+            "jun june",
+            "jul july",
+            "aug august",
+            "sep sept september",
+            "oct october",
+            "nov november",
+            "dec december",
+        ]
+    )
+    for m in names.split()
+}
+NAMED_DATE = re.compile(
+    r"\b(" + "|".join(sorted(MONTHS, key=len, reverse=True)) + r")\.?\s+(\d{1,2})(?:st|nd|rd|th)?"
+    r"(?:,?\s+(20\d\d))?\b",
+    re.I,
+)
+NUMERIC_DATE = re.compile(r"\b(?:(20\d\d)-(\d{1,2})-(\d{1,2})|(\d{1,2})/(\d{1,2})/(20\d\d))\b")
+
+
+def find_deadline(text: str, today: date | None = None) -> str | None:
+    """An application deadline stated in a posting's text, as 'YYYY-MM-DD', or None.
+
+    Only dates right after a cue like "deadline" or "apply by" count, so a start date
+    or "posted on" date isn't mistaken for one. A date without a year gets the year
+    that puts it nearest today (posted in October, "Jan 15" means next January).
+    """
+    today = today or date.today()
+    for cue in DEADLINE_CUE.finditer(text or ""):
+        clause = cue.group(0)
+        if m := NUMERIC_DATE.search(clause):
+            y, mo, d = (m[1], m[2], m[3]) if m[1] else (m[6], m[4], m[5])
+            found = _date_or_none(int(y), int(mo), int(d))
+        elif m := NAMED_DATE.search(clause):
+            mo, d = MONTHS[m[1].lower()], int(m[2])
+            if m[3]:
+                found = _date_or_none(int(m[3]), mo, d)
+            else:
+                options = [_date_or_none(today.year + k, mo, d) for k in (-1, 0, 1)]
+                found = min(
+                    (o for o in options if o), key=lambda o: abs((o - today).days), default=None
+                )
+        else:
+            continue
+        if found:
+            return found.isoformat()
+    return None
+
+
+def _date_or_none(y: int, m: int, d: int) -> date | None:
+    try:
+        return date(y, m, d)
+    except ValueError:  # e.g. "Feb 30"
+        return None
+
+
 def _shift_months(d: date, months: int) -> date:
     total = d.year * 12 + d.month - 1 + months
     return date(total // 12, total % 12 + 1, 1)

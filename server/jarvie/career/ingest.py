@@ -10,7 +10,7 @@ import httpx
 from loguru import logger
 
 from . import postings
-from .filters import Criteria, judge, relevance
+from .filters import Criteria, find_deadline, judge, relevance
 from .profile import CareerProfile, load
 from .sources import fetch_all
 
@@ -55,6 +55,8 @@ async def ingest(
         kept = kept[:max_results]
     saved: list[int] = []
     for p, verdict in kept:
+        # Only pass a deadline when the text states one, so a re-fetch never erases one.
+        deadline = find_deadline(p.text)
         saved.append(
             postings.save(
                 company=p.company,
@@ -68,8 +70,10 @@ async def ingest(
                 paid=verdict.paid,
                 raw_text=p.text[:20000] or None,
                 found_by_job=job_id,
+                **({"deadline": deadline} if deadline else {}),
             )
         )
+    postings.fill_deadlines()  # also catches older postings saved before this existed
     summary = {
         "fetched": len(raw),
         "saved": len(saved),

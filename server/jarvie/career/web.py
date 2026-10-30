@@ -41,11 +41,14 @@ def add_routes(app: FastAPI) -> None:
             )
         except ValueError as e:
             items, error = [], str(e)
+        for item in items:
+            item["days_left"] = postings.days_left(item)
         return render(
             request,
             "postings.html",
             "/",
             items=items,
+            expired=0 if f["status"] else len(postings.search(status="expired", limit=500)),
             f=f,
             kinds=postings.KINDS,
             statuses=postings.STATUSES,
@@ -129,15 +132,14 @@ def add_routes(app: FastAPI) -> None:
 
     @app.get("/pipeline", response_class=HTMLResponse)
     def pipeline_page(request: Request):
-        by_status = {
-            s: postings.search(status=s, sort="deadline", limit=500) for s in postings.STATUSES
-        }
+        shown = [s for s in postings.STATUSES if s != "expired"]  # expired stay hidden
+        by_status = {s: postings.search(status=s, sort="deadline", limit=500) for s in shown}
         return render(
             request,
             "pipeline.html",
             "/pipeline",
             summary=postings.pipeline_summary(),
-            statuses=postings.STATUSES,
+            statuses=shown,
             by_status=by_status,
         )
 

@@ -10,6 +10,7 @@
   <select name="sort">{% for s in sorts %}<option {{ 'selected' if f.sort == s }}>{{ s }}</option>{% endfor %}</select>
   <button>Filter</button>
 </form>
+{% if expired %}<p class="muted">{{ expired }} expired (deadline passed, never applied) hidden. <a href="/?status=expired">Show them</a></p>{% endif %}
 <table>
   <tr><th>Company</th><th>Title</th><th>Fields</th><th>Location</th><th>Deadline</th><th>Fit</th><th>Status</th></tr>
   {% for p in items %}
@@ -18,7 +19,7 @@
     <td><a href="/postings/{{ p.id }}">{{ p.title }}</a> <span class="pill">{{ p.kind }}</span></td>
     <td class="muted">{{ p.fields | join(", ") }}</td>
     <td class="muted">{{ p.location or "" }}</td>
-    <td>{{ p.deadline or "" }}</td>
+    <td>{{ p.deadline or "" }}{% if p.days_left is not none and 0 <= p.days_left <= 14 %} <span class="pill bad">{{ "today" if p.days_left == 0 else "in %d days" % p.days_left }}</span>{% endif %}</td>
     <td>{{ "%.2f" % p.fit_score if p.fit_score is not none else "-" }}</td>
     <td>{{ p.status or "" }}{% if p.has_coffee_chat %} ☕{% endif %}</td>
   </tr>

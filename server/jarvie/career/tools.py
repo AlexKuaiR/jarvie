@@ -15,6 +15,7 @@ def _short(p: dict) -> dict:
         "kind": p["kind"],
         "location": p["location"],
         "deadline": p["deadline"],
+        "days_left": postings.days_left(p),
         "fields": p["fields"],
         "paid": p["paid"],
         "fit_score": p["fit_score"],
@@ -43,12 +44,16 @@ async def list_postings(
     titles back and ask which one. If none match, the name may have been misheard, so
     try other spellings of it (e.g. "Casey" may be "CACI") before saying it isn't saved.
 
+    Mention deadlines when they're close (days_left). Postings whose deadline passed
+    without an application are expired and left out of lists (a query still finds
+    them, with status "expired"); pass status "expired" if the user asks about those.
+
     Args:
         query: Part of the company name or title, e.g. "caci" or "quant".
         kind: "internship" or "research".
         field: e.g. "machine learning", "software engineering", "biology", "biotech".
         status: "none" for ones not acted on yet, or interested, applied, oa,
-            interviewing, offer, rejected, withdrawn.
+            interviewing, offer, rejected, withdrawn, expired.
         min_fit: Only postings scored at least this (0 to 1).
         sort: "fit", "deadline" or "newest".
         limit: How many to return.
@@ -122,7 +127,8 @@ async def set_application_status(
     still being added without checking job_status first: recent adds are usually done.
 
     Args:
-        status: interested, applied, oa, interviewing, offer, rejected or withdrawn.
+        status: interested, applied, oa, interviewing, offer, rejected or withdrawn
+            (expired is set automatically when a deadline passes unapplied).
         note: Anything worth remembering, in the user's words.
     """
     try:

@@ -1,12 +1,21 @@
 import re
-from datetime import datetime
+from datetime import date, datetime
 
 from ..config import TZ
 from ..storage import dumps, loads
 from .schema import connect
 
 KINDS = ("internship", "research")
-STATUSES = ("interested", "applied", "oa", "interviewing", "offer", "rejected", "withdrawn")
+STATUSES = (
+    "interested",
+    "applied",
+    "oa",
+    "interviewing",
+    "offer",
+    "rejected",
+    "withdrawn",
+    "expired",  # set automatically: the deadline passed and you never applied
+)
 
 # Columns a source or the research agent may set. JSON_FIELDS hold lists.
 POSTING_FIELDS = {
@@ -153,8 +162,12 @@ def search(
     sort: str = "fit",
     limit: int = 50,
     query: str | None = None,
+    include_expired: bool = False,
 ) -> list[dict]:
     """Postings matching every filter given. status "none" means not acted on yet.
+
+    Expired postings (deadline passed, never applied) are left out unless you ask for
+    status "expired", pass include_expired, or name the posting with a query.
 
     query is how you'd say it ("the NVIDIA Ignite SWE internship"): matched word by word
     against company and title, ignoring case, filler words and abbreviations (SWE =
@@ -163,6 +176,7 @@ def search(
     """
     if sort not in SORTS:
         raise ValueError(f"sort must be one of {sorted(SORTS)}")
+    expire_past_due()  # one quick query, so every list is up to date without a scheduler
     sql = """SELECT postings.*, applications.status, applications.has_coffee_chat
              FROM postings LEFT JOIN applications ON applications.posting_id = postings.id
              WHERE 1 = 1"""
@@ -179,6 +193,8 @@ def search(
     elif status:
         sql += " AND applications.status = ?"
         args.append(status)
+    if status != "expired" and not include_expired and not query_words(query or ""):
+        sql += " AND applications.status IS NOT 'expired'"
     if min_fit is not None:
         sql += " AND fit_score >= ?"
         args.append(min_fit)
@@ -301,3 +317,51 @@ def pipeline_summary() -> dict:
             "SELECT COUNT(*) FROM applications WHERE has_coffee_chat = 1"
         ).fetchone()[0]
     return {"by_status": {s: counts.get(s, 0) for s in STATUSES}, "coffee_chats": chats}
+
+
+def days_left(posting: dict, today: date | None = None) -> int | None:
+    """Days until the deadline (0 = today, negative = passed), or None if unknown."""
+    if not posting.get("deadline"):
+        return None
+    try:
+        due = date.fromisoformat(posting["deadline"])
+    except ValueError:
+        return None
+    return (due - (today or date.today())).days
+
+
+def expire_past_due(today: date | None = None) -> list[int]:
+    """Mark postings expired when the deadline passed and you never got past interested.
+
+    Postings with no known deadline are never expired. It's reversible: setting
+    "applied" (or later) by hand brings a posting back, and so does fixing a wrong
+    deadline and setting it back to "interested".
+    """
+    today_text = (today or date.today()).isoformat()
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT postings.id, postings.deadline
+               FROM postings LEFT JOIN applications ON applications.posting_id = postings.id
+               WHERE postings.deadline IS NOT NULL AND postings.deadline < ?
+                 AND (applications.status IS NULL OR applications.status = 'interested')""",
+            (today_text,),
+        ).fetchall()
+    for r in rows:
+        set_status(r["id"], "expired", f"deadline {r['deadline']} passed; never applied")
+    return [r["id"] for r in rows]
+
+
+def fill_deadlines(today: date | None = None) -> list[int]:
+    """Find deadlines stated in saved descriptions for postings that have none yet."""
+    from .filters import find_deadline
+
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT id, raw_text FROM postings WHERE deadline IS NULL AND raw_text IS NOT NULL"
+        ).fetchall()
+    found = []
+    for r in rows:
+        if deadline := find_deadline(r["raw_text"], today):
+            update(r["id"], deadline=deadline)
+            found.append(r["id"])
+    return found
