@@ -129,3 +129,60 @@ def test_discover_name_test_sets(tmp_path):
     (tmp_path / "audio/name").mkdir(parents=True)
     (tmp_path / "audio-speakers/sam/name").mkdir(parents=True)
     assert set(compare.discover_test_sets("name", tmp_path)) == {"me", "sam"}
+
+
+def gate_rows(model, pos_scores, everyday_frames):
+    """Positives (max score only) for `scores`; everyday clips (per-window scores) for `everyday`."""
+    scores = [
+        {"model": model, "kind": "pos", "pace": "normal", "similarity": "", "max_score": v}
+        for v in pos_scores
+    ] + [  # summarize() needs normal-pace negatives to pick its threshold
+        {"model": model, "kind": "neg", "pace": "normal", "similarity": "similar", "max_score": 0.1}
+    ]
+    everyday = [
+        {"model": model, "duration": 1800.0, "frame_scores": frames} for frames in everyday_frames
+    ]
+    return scores, everyday
+
+
+def test_gate_summary_counts_separate_fires_per_hour():
+    # Two 30-min clips = 1 hour. At 0.5 the first clip fires twice (the adjacent 0.6s are one
+    # opening; the 0.9 comes after the gate has closed again), the second once: 3 per hour.
+    first = [0.6, 0.6] + [0.1] * 40 + [0.9]
+    s, e = gate_rows("m", [0.9, 0.7, 0.6], [first, [0.0, 0.55, 0.0]])
+    gate = compare.gate_summary(pd.DataFrame(s), pd.DataFrame(e), max_fpph=1.0)
+    row = gate.loc["m"]
+    assert row.everyday_hours == pytest.approx(1.0)
+    # Lowest threshold within 1 fire/hour is above 0.6, so only the 0.9 and 0.7 positives pass.
+    assert 0.6 < row.gate_threshold <= 0.7
+    assert row.gate_recall == pytest.approx(2 / 3)
+    assert row.gate_fpph == pytest.approx(1.0)
+    budget3 = compare.gate_summary(pd.DataFrame(s), pd.DataFrame(e), max_fpph=3.0).loc["m"]
+    # Full recall needs 0.6; there the second clip (peak 0.55) no longer fires: 2 per hour.
+    assert budget3.gate_recall == 1.0 and budget3.gate_threshold == pytest.approx(0.6)
+    assert budget3.gate_fpph == pytest.approx(2.0)
+    assert budget3.fpph_at_threshold == pytest.approx(3.0)  # summarize()'s threshold is lower
+
+
+def test_gate_summary_without_everyday_audio_or_within_budget():
+    s, e = gate_rows("m", [0.9], [[1.0, 0.0, 1.0]])
+    no_audio = compare.gate_summary(pd.DataFrame(s), pd.DataFrame()).loc["m"]
+    assert no_audio.everyday_hours == 0 and np.isnan(no_audio.gate_recall)
+    # Scores of 1.0 fire at every threshold, so even 0 fires/hour can't be met.
+    strict = compare.gate_summary(pd.DataFrame(s), pd.DataFrame(e), max_fpph=0.0).loc["m"]
+    assert np.isnan(strict.gate_threshold) and strict.fpph_at_threshold > 0
+
+
+def test_score_everyday_empty_without_recordings(tmp_path):
+    assert compare.score_everyday([], tmp_path).empty
+    (tmp_path / "audio/wake").mkdir(parents=True)
+    (tmp_path / "audio/wake/pos_desk_quiet-normal_wake_000.wav").write_bytes(b"x")
+    assert compare.score_everyday([], tmp_path).empty  # wake clips aren't everyday speech
+
+
+def test_gate_fires_counts_gate_openings():
+    hold = round(compare.GATE_HOLD_SECONDS / compare.FRAME_SECONDS)
+    assert compare.gate_fires([0.9, 0.1, 0.9], 0.5) == 1  # second fire while the gate is open
+    assert compare.gate_fires([0.9] + [0.1] * hold + [0.9], 0.5) == 2
+    # Stuck above the threshold: one opening per hold, not a single long "fire".
+    assert compare.gate_fires([0.9] * (3 * hold), 0.5) == 3

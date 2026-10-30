@@ -85,11 +85,12 @@ The gate shouldn't slow activation:
 The gate doesn't need a precise detector. It needs **high recall at a low threshold**, with a
 tolerable false-fire rate: each false fire costs about 3 s of CONFIRMING, then the transcript check
 rejects it. Equal-error rate (`eer_normal`) is the wrong balance for a gate. For `MODE = "name"`,
-`compare_models.ipynb` should report:
+two numbers say whether the gate is feasible before anyone builds it:
 - **Recall at a false-fire budget**: recall at ≤ N false fires per hour of `neg-everyday` audio.
-- **How late it fires**: time from the end of the word to the detection.
-
-These two numbers say whether the gate is feasible before anyone builds it.
+  `compare_models.ipynb` reports this in its Gate table (`compare.gate_summary`, budget
+  `MAX_FPPH`). A fire counts as one gate opening that holds for 3 s (`compare.gate_fires`), so a
+  model stuck above its threshold counts once per 3 s instead of looking like a single fire.
+- **How late it fires**: time from the end of the word to the detection. Not measured yet.
 
 ## Related decision: the sleep model
 

@@ -113,11 +113,12 @@ def score_all(
     hop: int,
     featurize: Featurizer,
     pad_seconds: float = 1.0,
+    pattern: str = "*.wav",
 ) -> pd.DataFrame:
-    """Score every wav in a directory. One row per file."""
+    """Score every wav in a directory (or those matching `pattern`). One row per file."""
     rows = []
     skipped = []
-    for path in sorted(audio_dir.glob("*.wav")):
+    for path in sorted(audio_dir.glob(pattern)):
         parts = path.stem.split("_")
         if len(parts) != 5:
             print(f"skipping malformed name: {path.name}")
