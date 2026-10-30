@@ -55,6 +55,7 @@ from pipecat.turns.user_turn_strategies import (
 from jarvie.config import TZ
 from jarvie.tools import ALL_TOOLS, briefing, warmup
 from jarvie.wake import AwakeAtStartWakePhrase
+from jarvie.wake_phrases import DEEPGRAM_KEYTERMS, STAGE2_PHRASES
 
 load_dotenv(override=True)
 
@@ -64,7 +65,12 @@ async def run_bot(transport: BaseTransport):
     logger.info("Starting bot")
 
     # Speech-to-Text service
-    stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"))
+    # keyterm: tell Deepgram to listen for "Jarvie" (not a dictionary word), so it's transcribed as
+    # Jarvie rather than "Jarvis", which deliberately doesn't wake the bot.
+    stt = DeepgramSTTService(
+        api_key=os.getenv("DEEPGRAM_API_KEY"),
+        settings=DeepgramSTTService.Settings(keyterm=DEEPGRAM_KEYTERMS),
+    )
 
     # Text-to-Speech service
     tts = CartesiaTTSService(
@@ -96,9 +102,10 @@ async def run_bot(transport: BaseTransport):
 
     context = LLMContext(messages=[], tools=ALL_TOOLS)
 
-    # Starts awake so you can answer the greeting without "jarvis"; after `timeout`
-    # seconds of silence it goes back to needing the wake phrase.
-    wake = AwakeAtStartWakePhrase(phrases=["jarvis"], timeout=10.0)
+    # Stage-2 wake word: while the bot runs, saying "jarvie" opens a turn (any spelling Deepgram
+    # may use; see jarvie/wake_phrases.py). Starts awake so you can answer the greeting directly;
+    # after `timeout` seconds of silence it goes back to needing the name.
+    wake = AwakeAtStartWakePhrase(phrases=STAGE2_PHRASES, timeout=10.0)
 
     @wake.event_handler("on_wake_phrase_detected")
     async def on_wake(strategy, phrase):
@@ -106,7 +113,7 @@ async def run_bot(transport: BaseTransport):
 
     @wake.event_handler("on_wake_phrase_timeout")
     async def on_wake_timeout(strategy):
-        logger.info("WAKE: timed out, say 'jarvis' to talk again")
+        logger.info("WAKE: timed out, say 'jarvie' to talk again")
 
     user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
         context,
