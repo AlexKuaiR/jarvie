@@ -6,7 +6,7 @@ log at `~/jarvie-data/logs/worker.log` usually says why.
 
 **Setup (once per session)**
 - Terminal 1, the bot: `cd ~/pipecat-quickstart/server && uv run bot.py`, then open
-  http://localhost:7860. Start each spoken request with "Jarvis".
+  http://localhost:7860. Start each spoken request with "Jarvie" ("Jarvis" deliberately doesn't wake it).
 - Terminal 2, the dashboard: `jdash`, or
   `cd ~/pipecat-quickstart/server && .venv/bin/python -m jarvie.dashboard`, then open
   http://localhost:7861.
@@ -26,7 +26,7 @@ log at `~/jarvie-data/logs/worker.log` usually says why.
 
 ## A. Finding internships by voice
 
-- [ ] **A1. A quick search with no AI.** Say: "Jarvis, find me paid software engineering
+- [ ] **A1. A quick search with no AI.** Say: "Jarvie, find me paid software engineering
   internships for Summer 2027." When it asks about searching beyond the job boards and
   AI scoring, answer "no" and "none".
   - Expect: it reads back your answers. When you say "go", it says it's queued *and
@@ -87,7 +87,7 @@ log at `~/jarvie-data/logs/worker.log` usually says why.
 Use people you know and who won't mind: yourself, a friend, a TA you've talked to.
 Drafting never sends anything.
 
-- [ ] **C1. Add a contact by voice:** "Jarvis, add my friend Sam Lee, sam@example.com,
+- [ ] **C1. Add a contact by voice:** "Jarvie, add my friend Sam Lee, sam@example.com,
   at Berkeley, to my contacts" (use a real friend's details).
   - Expect: the Contacts tab shows Sam with the email and the source "user".
 - [ ] **C2. Add a contact on the dashboard.** Contacts tab, then Add, with your own
