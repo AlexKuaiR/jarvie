@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block body %}
+<form method="get" style="margin-bottom:12px">
+  <input name="q" placeholder="company or title" value="{{ f.q or '' }}">
+  <select name="kind"><option value="">any kind</option>
+    {% for k in kinds %}<option {{ 'selected' if f.kind == k }}>{{ k }}</option>{% endfor %}</select>
+  <input name="field" placeholder="field, e.g. biotech" value="{{ f.field or '' }}">
+  <select name="status"><option value="">any status</option><option value="none" {{ 'selected' if f.status == 'none' }}>not acted on</option>
+    {% for s in statuses %}<option {{ 'selected' if f.status == s }}>{{ s }}</option>{% endfor %}</select>
+  <select name="sort">{% for s in sorts %}<option {{ 'selected' if f.sort == s }}>{{ s }}</option>{% endfor %}</select>
+  <button>Filter</button>
+</form>
+{% if expired %}<p class="muted">{{ expired }} expired (deadline passed, never applied) hidden. <a href="/?status=expired">Show them</a></p>{% endif %}
+<table>
+  <tr><th>Company</th><th>Title</th><th>Fields</th><th>Location</th><th>Deadline</th><th>Fit</th><th>Status</th></tr>
+  {% for p in items %}
+  <tr>
+    <td>{{ p.company }}</td>
+    <td><a href="/postings/{{ p.id }}">{{ p.title }}</a> <span class="pill">{{ p.kind }}</span></td>
+    <td class="muted">{{ p.fields | join(", ") }}</td>
+    <td class="muted">{{ p.location or "" }}</td>
+    <td>{{ p.deadline or "" }}{% if p.days_left is not none and 0 <= p.days_left <= 14 %} <span class="pill bad">{{ "today" if p.days_left == 0 else "in %d days" % p.days_left }}</span>{% endif %}</td>
+    <td>{{ "%.2f" % p.fit_score if p.fit_score is not none else "-" }}</td>
+    <td>{{ p.status or "" }}{% if p.has_coffee_chat %} ☕{% endif %}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7" class="muted">No postings yet. Run a search from the Searches tab or by voice, or run <code>python -m jarvie.career.ingest</code>.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

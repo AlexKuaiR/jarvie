@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvie · {{ title }}</title>
+<style>
+  :root { --bg:#fafaf9; --fg:#1c1917; --muted:#78716c; --line:#e7e5e4; --accent:#2563eb; --bad:#b91c1c; --ok:#15803d; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1c1917; --fg:#f5f5f4; --muted:#a8a29e; --line:#44403c; --accent:#60a5fa; --bad:#f87171; --ok:#4ade80; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.45 system-ui, sans-serif; }
+  nav { display:flex; gap:16px; padding:12px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  nav a { color:var(--fg); text-decoration:none; } nav a.on { color:var(--accent); font-weight:600; }
+  main { padding:16px; max-width:1100px; margin:0 auto; }
+  table { width:100%; border-collapse:collapse; } th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:500; font-size:13px; }
+  .muted { color:var(--muted); } .bad { color:var(--bad); } .ok { color:var(--ok); }
+  .pill { display:inline-block; padding:1px 8px; border:1px solid var(--line); border-radius:999px; font-size:12px; }
+  form.inline { display:inline; } input, select, textarea, button { font:inherit; color:inherit; background:transparent; border:1px solid var(--line); border-radius:6px; padding:4px 8px; }
+  textarea { width:100%; min-height:160px; } button { cursor:pointer; } button.primary { border-color:var(--accent); color:var(--accent); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; }
+  .card { border:1px solid var(--line); border-radius:8px; padding:12px; }
+  .flash { padding:8px 12px; border:1px solid var(--bad); border-radius:6px; color:var(--bad); margin-bottom:12px; }
+  pre { white-space:pre-wrap; }
+</style>
+</head>
+<body>
+<nav>
+  {% for href, label in nav %}
+  <a href="{{ href }}" class="{{ 'on' if active == href else '' }}">{{ label }}</a>
+  {% endfor %}
+</nav>
+<main>
+{% if stalled_jobs %}<div class="flash">{{ stalled_jobs }} job{{ "s" if stalled_jobs > 1 }} queued, but the worker isn't running. Start it: <code>{{ start_worker }}</code></div>{% endif %}
+{% if error %}<div class="flash">{{ error }}</div>{% endif %}
+{% block body %}{% endblock %}
+</main>
+</body>
+</html>

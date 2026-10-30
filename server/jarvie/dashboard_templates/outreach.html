@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block body %}
+<p>{% if dry_run %}<span class="pill">DRY RUN</span> Approved emails are scheduled and "sent" to <code>~/jarvie-data/outbox_dry_run.jsonl</code> only. Set <code>CAREER_SEND_ENABLED=1</code> to send from Gmail.
+{% else %}<span class="pill bad">LIVE</span> Approved emails send from your Gmail, at most {{ cap }} a day, weekdays 9-5.{% endif %}</p>
+<div class="grid" style="margin-bottom:16px">{% for s, n in counts.items() %}<div class="card"><div class="muted">{{ s }}</div><b>{{ n }}</b></div>{% endfor %}</div>
+
+{% if drafts %}
+<form method="post" action="/outreach/approve-all" style="margin-bottom:12px"><button class="primary">Approve all {{ drafts | length }} drafts</button></form>
+{% endif %}
+{% for m in drafts %}
+<div class="card" id="draft-{{ m.id }}" style="margin-bottom:12px">
+  <div><b>{{ m.name }}</b> <span class="muted">· {{ m.contact.role or "" }} · {{ m.company or "" }} · {{ m.email }} · {{ m.purpose }}{% if m.resume %} · resume: {{ m.resume }}{% endif %}</span></div>
+
+  <details open style="margin:8px 0"><summary><b>Summary</b></summary>
+  {% if m.summary %}
+    <p style="margin:4px 0">{{ m.summary.gist }}</p>
+    <p class="muted" style="margin:4px 0">Angle: {{ m.summary.angle }} · Tone: {{ m.summary.tone }}</p>
+    <ol style="margin:4px 0">{% for pt in m.summary.points %}<li>{{ pt }}</li>{% endfor %}</ol>
+    <p class="muted" style="margin:4px 0">Uses: {{ m.summary.facts_used | join(", ") }}</p>
+  {% else %}<p class="muted">Written before summaries existed. Ask for any rewrite to get one.</p>{% endif %}
+  </details>
+
+  <details style="margin:8px 0"><summary><b>About {{ m.name }}</b> <span class="muted">({{ m.facts | length }} facts; emails can only use these)</span></summary>
+    <ul style="margin:4px 0">{% for k, v in m.facts.items() %}<li><span class="muted">{{ k }}:</span> {{ v }}</li>{% else %}<li class="muted">Nothing stored yet.</li>{% endfor %}
+    {% if m.contact.alumni_of %}<li><span class="muted">alumni of:</span> {{ m.contact.alumni_of | join(", ") }}</li>{% endif %}
+    {% for u in m.contact.evidence_urls %}<li><a href="{{ u }}" target="_blank">{{ u }}</a></li>{% endfor %}</ul>
+    <form method="post" action="/contacts/{{ m.contact_id }}/fact" class="inline">
+      <input type="hidden" name="next" value="/outreach#draft-{{ m.id }}">
+      <input name="fact" placeholder="Add a fact, e.g. we met at the career fair" style="width:60%">
+      <button>Add fact</button>
+    </form>
+  </details>
+
+  <form method="post" action="/outreach/{{ m.id }}/save">
+    <input name="subject" value="{{ m.subject }}" style="width:100%;margin:6px 0">
+    <textarea name="body">{{ m.body }}</textarea>
+    <button>Save edits</button>
+  </form>
+
+  <form method="post" action="/outreach/{{ m.id }}/revise" style="margin:8px 0">
+    <input name="instruction" placeholder="Rewrite with Jarvie, e.g. shorter, lead with her vaccine work" style="width:70%">
+    <button>Rewrite</button>
+  </form>
+  {% if m.rewrite %}{% set r = m.rewrite %}
+    {% if r.status in ("queued", "running") %}<p class="muted">Rewriting ("{{ r.params.instruction }}")… refresh in a minute.</p>
+    {% elif r.status == "failed" %}<p class="flash">Rewrite failed: {{ r.error }}</p>
+    {% elif r.result and not r.result.revised %}<p class="flash">Rewrite not used ("{{ r.params.instruction }}"): {{ r.result.problems | join("; ") }}. The draft is unchanged.</p>{% endif %}
+  {% endif %}
+
+  {% if m.versions | length > 1 %}
+  <details style="margin:8px 0"><summary class="muted">{{ m.versions | length }} versions</summary>
+    {% for v in m.versions | reverse %}
+    <div style="border-top:1px solid #ddd;padding:6px 0">
+      <span class="muted">{{ v.created_at[:16] }} · {{ "you" if v.by == "you" else "Jarvie" }}{% if v.instruction %} · "{{ v.instruction }}"{% endif %}</span>
+      {% if not loop.first %}<form method="post" action="/outreach/{{ m.id }}/restore" class="inline"><input type="hidden" name="revision_id" value="{{ v.id }}"><button>Use this version</button></form>{% endif %}
+      <div><b>{{ v.subject }}</b></div><pre style="white-space:pre-wrap;margin:4px 0">{{ v.body }}</pre>
+    </div>
+    {% endfor %}
+  </details>
+  {% endif %}
+  <form method="post" action="/outreach/{{ m.id }}/status" class="inline"><input type="hidden" name="status" value="approved"><button class="primary">Approve</button></form>
+  <form method="post" action="/outreach/{{ m.id }}/status" class="inline"><input type="hidden" name="status" value="stopped"><button>Reject</button></form>
+</div>
+{% else %}<p class="muted">No drafts waiting. Draft emails by voice ("draft coffee chat emails to ...") or from a people search with "draft after" on.</p>{% endfor %}
+
+<h3>In progress and sent</h3>
+<table>
+  <tr><th>To</th><th>Subject</th><th>Status</th><th>When</th><th></th></tr>
+  {% for m in others %}
+  <tr>
+    <td>{{ m.name }} <span class="muted">{{ m.company or "" }}</span></td>
+    <td>{{ m.subject }}</td>
+    <td>{{ m.status }}{% if m.gmail_message_id and m.gmail_message_id.startswith("dryrun-") %} <span class="pill">dry run</span>{% endif %}</td>
+    <td class="muted">{{ (m.sent_at or m.scheduled_at or "")[:16] }}</td>
+    <td>
+      {% if m.status in ("approved", "scheduled") %}<form method="post" action="/outreach/{{ m.id }}/status" class="inline"><input type="hidden" name="status" value="stopped"><button>Cancel</button></form>{% endif %}
+      {% if m.status == "replied" and m.posting_id %}<form method="post" action="/outreach/{{ m.id }}/coffee" class="inline"><button>Had coffee chat ☕</button></form>{% endif %}
+    </td>
+  </tr>
+  {% else %}<tr><td colspan="5" class="muted">Nothing yet.</td></tr>{% endfor %}
+</table>
+{% endblock %}

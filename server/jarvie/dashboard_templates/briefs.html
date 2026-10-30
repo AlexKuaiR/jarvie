@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block body %}
+<p class="muted">The questions Jarvie asks before a big search. Answer here or by voice — both edit the same brief.</p>
+<form method="post" action="/briefs" style="margin-bottom:16px">
+  <select name="kind">{% for k in kinds %}<option>{{ k }}</option>{% endfor %}</select>
+  <button class="primary">Start a new search</button>
+</form>
+{% for b in open_briefs %}
+<div class="card" style="margin-bottom:12px">
+  <h3 style="margin-top:0">#{{ b.id }} · {{ b.kind }} <span class="muted">(last answered by {{ b.last_channel }})</span></h3>
+  <form method="post" action="/briefs/{{ b.id }}/answer">
+    <table>
+      {% for q in questions[b.kind] %}
+      <tr>
+        <th style="width:40%">{{ q.prompt }}{% if q.required %} <span class="bad">*</span>{% endif %}</th>
+        <td><input name="{{ q.key }}" size="40" value="{{ b.display.get(q.key, '') }}"
+             placeholder="{{ q.hint }}"></td>
+      </tr>
+      {% endfor %}
+    </table>
+    <button>Save answers</button>
+  </form>
+  <form method="post" action="/briefs/{{ b.id }}/submit" class="inline"><button class="primary">Start search</button></form>
+  <form method="post" action="/briefs/{{ b.id }}/cancel" class="inline"><button>Cancel</button></form>
+</div>
+{% else %}
+<p class="muted">No searches waiting for answers.</p>
+{% endfor %}
+{% endblock %}

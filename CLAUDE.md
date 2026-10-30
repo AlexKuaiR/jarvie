@@ -16,6 +16,20 @@ Current (exists in `server/`):
 - Tool layer: typed function-calling tools in `server/jarvie/tools.py` (`ALL_TOOLS`):
   Google Calendar events plus deadline add/list/update/mute/complete
 - Storage: SQLite at `~/jarvie-data/jarvie.db` (`server/jarvie/db.py`)
+- Career pipeline (`server/jarvie/career/`): job-board feeds (Greenhouse/Lever/Ashby APIs,
+  SimplifyJobs lists; Handshake only pasted), hard filters, application status tracking,
+  Opus 5.5 research agent that scores postings, cover letters/essays, and an apply assistant
+  that fills forms but never submits. Profile: `~/jarvie-data/career_profile.toml`
+- Outreach (`server/jarvie/outreach/`, standalone, no career dependency): people finder
+  (public pages only, never LinkedIn, evidence required), Hunter email lookup, Sonnet 5.5
+  writer with a grounding check, approval queue, Gmail sender (dry run unless
+  `CAREER_SEND_ENABLED=1`)
+- Background work: `server/jarvie/worker.py` runs the `jobs` queue (`jobs.py`); searches start
+  from briefs (`briefs.py`) answered by voice, the localhost text box, or the dashboard
+  (`dashboard.py`, http://localhost:7861). Background model calls go through `cli_models.py`
+  (Claude Code / Codex CLI on the user's subscriptions, the default) or `llm.py` (the
+  Anthropic API), chosen per job type in the profile's `[models]`; the voice model stays
+  OpenAI. Tests must never run the real `claude`/`codex` (conftest blocks them). Details and caveats: `server/jarvie/career/CAREER_PIPELINE.md`
 
 Planned (not built yet; move to Current as it becomes real):
 - Edge (Raspberry Pi): always-on local wake-word + speaker-ID pre-filter, GPIO silent alarm
@@ -32,6 +46,9 @@ Planned (not built yet; move to Current as it becomes real):
                         literature and hardware modules are planned
 - `server/training/`    wake-word model training (livekit-wakeword on RunPod); see its README
 - `server/scratch/`     throwaway experiments; not production, don't import from it
+- `server/jarvie/career/`, `server/jarvie/outreach/`   career search and outreach packages;
+                        `jobs.py`, `briefs.py`, `job_tools.py`, `worker.py`, `llm.py`,
+                        `dashboard.py` (+ `dashboard_templates/`) are shared by both
 - `server/pyproject.toml`, `server/uv.lock`   dependencies, managed with uv
 - `server/Dockerfile`, `server/pcc-deploy.toml`   Pipecat Cloud deploy config
 - `server/.venv/`       interpreter + packages; never edit, never commit
@@ -44,6 +61,10 @@ Planned (not built yet; move to Current as it becomes real):
 - Format: `server/.venv/bin/ruff format server`
 - Run the bot: `cd server && uv run bot.py`
 - Add a dependency: `cd server && uv add <package>` (ask first; this edits pyproject and uv.lock)
+- Career/outreach (from `server/`): worker `.venv/bin/python -m jarvie.worker` (normally
+  auto-started when a job is queued, see `autostart.py`; tests keep that off), dashboard
+  `.venv/bin/python -m jarvie.dashboard`, job boards without a model
+  `.venv/bin/python -m jarvie.career.ingest`
 
 ## Conventions
 - Python 3.11+ (`requires-python` in pyproject; the venv runs 3.12), type hints on public functions, small modules over big ones

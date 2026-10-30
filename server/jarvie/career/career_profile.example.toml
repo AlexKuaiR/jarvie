@@ -1,0 +1,80 @@
+# Copy to ~/jarvie-data/career_profile.toml and fill in. Jarvie reads it on every job, so
+# edits take effect without restarting anything.
+
+# Your resumes. Each has a Markdown/plain-text copy the models read (`text`), the PDF the
+# apply assistant uploads (`pdf`), and the fields it's for. Each posting uses the resume
+# whose fields best match it (its title counts most); ties and non-matches use
+# default_resume. Override per posting on the dashboard or by voice ("use my QR resume
+# for the Citadel one"). With only one resume, `resume = "~/jarvie-data/resume.md"`
+# (plus resume_pdf under [applicant]) works instead of these tables.
+default_resume = "swe"
+
+# When you graduate, "YYYY-MM". Postings that require graduating outside the window
+# below are filtered out before any model sees them.
+graduation = "2028-05"
+graduation_window_months = 6
+
+# Which fields you want. Postings are tagged with these exact names:
+# machine learning, software engineering, quant, biology, biotech.
+fields = ["machine learning", "software engineering", "quant", "biology", "biotech"]
+
+# What you'll consider.
+kinds = ["internship", "research"]
+paid_only = true
+min_hourly_pay = 0          # USD; 0 means any paid position
+locations = ["Bay Area", "Boston", "Remote"]
+min_prestige = 1            # 1-5, see the rubric in research_agent.py
+
+# Things that rule a posting out, in plain words the research agent checks for,
+# e.g. ownership of work you do outside the job.
+dealbreakers = [
+    "employer claims ownership of personal projects or outside work",
+]
+
+[resumes.swe]
+text = "~/jarvie-data/resume_swe.md"
+pdf = "~/jarvie-data/resume_swe.pdf"
+fields = ["software engineering"]
+
+[resumes.mle]
+text = "~/jarvie-data/resume_mle.md"
+pdf = "~/jarvie-data/resume_mle.pdf"
+fields = ["machine learning", "biology", "biotech"]
+
+[resumes.qr]
+text = "~/jarvie-data/resume_qr.md"
+pdf = "~/jarvie-data/resume_qr.pdf"
+fields = ["quant"]
+
+# Which model runs each kind of job. Subscription backends cost nothing per job:
+#   "codex"               Codex CLI on your ChatGPT plan (its default model, or "codex:<model>")
+#   "claude-code:sonnet"  Claude Code on your Claude plan ("claude-code:opus" for Opus)
+#   "api"                 pay-as-you-go Anthropic API (needs ANTHROPIC_API_KEY)
+# Join several with "," to fall back when one plan's usage limit is hit, e.g.
+# "codex,claude-code:sonnet". Sign in once first: run `codex` and `claude` in a terminal.
+[models]
+research = "codex"               # scoring postings, searches, finding people
+documents = "claude-code:opus"   # cover letters and essays
+writer = "claude-code:sonnet"    # outreach emails
+
+# Companies to pull from public job-board APIs. Use the slug from the board URL:
+# boards.greenhouse.io/<slug>, jobs.lever.co/<slug>, jobs.ashbyhq.com/<slug>.
+# simplify lists SimplifyJobs' GitHub internship repos (a new one each season).
+[watchlist]
+greenhouse = []
+lever = []
+ashby = []
+simplify = ["SimplifyJobs/Summer2027-Internships"]
+
+# Your details: emails are signed with your name, and the apply assistant (phase 6)
+# fills these into application forms. Leave out anything you don't want used.
+[applicant]
+name = "Your Name"
+email = "you@berkeley.edu"
+phone = ""
+school = "UC Berkeley"
+major = ""
+links = []                  # e.g. ["https://github.com/you", "https://you.dev"]
+# resume_pdf = "~/jarvie-data/resume.pdf"   # only with a single `resume = ...`
+location = "Berkeley, CA"
+work_authorization = ""     # as you'd answer "authorized to work in the US?"

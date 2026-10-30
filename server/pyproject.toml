@@ -4,14 +4,25 @@ version = "0.1.0"
 description = "Voice AI bot built with Pipecat"
 requires-python = ">=3.11"
 dependencies = [
+    "anthropic>=2.3.0",
     "beautifulsoup4>=4.15.0",
+    "fastapi>=0.141.1",
     "google-api-python-client>=2.200.0",
     "google-auth-httplib2>=0.4.2",
     "google-auth-oauthlib>=1.4.1",
+    "httpx>=0.28.1",
+    "jinja2>=3.1.6",
     "pipecat-ai[cartesia,daily,deepgram,openai,runner,silero,webrtc]",
     "pipecatcloud",
+    "python-multipart>=0.0.32",
     "requests>=2.34.2",
     "sounddevice>=0.5.6",
+    "uvicorn>=0.53.0",
+]
+
+[project.optional-dependencies]
+apply = [
+    "playwright>=1.64.1",
 ]
 
 [dependency-groups]

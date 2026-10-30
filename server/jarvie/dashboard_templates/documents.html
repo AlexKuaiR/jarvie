@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block body %}
+<table>
+  <tr><th>Posting</th><th>Kind</th><th>Version</th><th>Words</th><th>Flagged</th><th>Written</th></tr>
+  {% for d in items %}
+  <tr><td>{{ d.title }} <span class="muted">· {{ d.company }}</span></td>
+    <td><a href="/documents/{{ d.id }}">{{ d.kind }}</a>{% if d.question %} <span class="muted">{{ d.question[:50] }}</span>{% endif %}</td>
+    <td>v{{ d.version }}</td><td>{{ d.text.split() | length }}</td>
+    <td>{% if d.flagged %}<span class="bad">{{ d.flagged | length }}</span>{% else %}<span class="ok">0</span>{% endif %}</td>
+    <td class="muted">{{ d.created_at[:16] }}</td></tr>
+  {% else %}<tr><td colspan="6" class="muted">None yet. Open a posting and click "Write with Claude", or ask Jarvie.</td></tr>{% endfor %}
+</table>
+{% endblock %}

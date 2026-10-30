@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="grid" style="margin-bottom:16px">
+  {% for s, n in summary.by_status.items() %}<div class="card"><div class="muted">{{ s }}</div><b>{{ n }}</b></div>{% endfor %}
+  <div class="card"><div class="muted">coffee chats</div><b>{{ summary.coffee_chats }}</b></div>
+</div>
+{% for s in statuses %}{% set rows = by_status[s] %}{% if rows %}
+<h3>{{ s }}</h3>
+<table>{% for p in rows %}<tr><td>{{ p.company }}</td><td><a href="/postings/{{ p.id }}">{{ p.title }}</a></td><td>{{ p.deadline or "" }}</td><td>{% if p.has_coffee_chat %}☕{% endif %}</td></tr>{% endfor %}</table>
+{% endif %}{% endfor %}
+{% endblock %}

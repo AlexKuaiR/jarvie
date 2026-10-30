@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block body %}
+<form method="get" style="margin-bottom:12px">
+  <input name="company" placeholder="company" value="{{ f.company or '' }}">
+  <select name="school"><option value="">any school</option>
+    {% for s in schools %}<option {{ 'selected' if f.school == s }}>{{ s }}</option>{% endfor %}</select>
+  <button>Filter</button>
+  <span class="muted">· find new people from the <a href="/briefs">Searches</a> tab (kind find_contacts)</span>
+</form>
+<table>
+  <tr><th>Name</th><th>Role · Company</th><th>Alumni</th><th>Email</th><th>Sources</th><th></th></tr>
+  {% for c in items %}
+  <tr class="{{ 'muted' if c.do_not_contact }}">
+    <td>{{ c.name }}{% if c.do_not_contact %} <span class="pill bad">do not contact</span>{% endif %}
+      {% if c.features %}<div class="muted" style="font-size:13px">{% for k, v in c.features.items() %}{{ k }}: {{ v }}{% if not loop.last %} · {% endif %}{% endfor %}</div>{% endif %}</td>
+    <td>{{ c.role or "" }}{% if c.company %} · {{ c.company }}{% endif %}</td>
+    <td>{{ c.alumni_of | join(", ") }}</td>
+    <td>{% if c.email %}{{ c.email }} <span class="pill">{{ c.email_verified or "unverified" }}</span>{% else %}
+      <form method="post" action="/contacts/{{ c.id }}/find-email" class="inline"><button>Find email</button></form>{% endif %}</td>
+    <td>{% for u in c.evidence_urls %}<a href="{{ u }}" target="_blank" rel="noopener">[{{ loop.index }}]</a> {% endfor %}
+      <span class="muted">{{ c.source }}</span></td>
+    <td>{% if not c.do_not_contact %}<form method="post" action="/contacts/{{ c.id }}/dnc" class="inline"><button>Do not contact</button></form>{% endif %}</td>
+  </tr>
+  {% else %}<tr><td colspan="6" class="muted">No contacts yet.</td></tr>{% endfor %}
+</table>
+<h3>Add someone yourself</h3>
+<form method="post" action="/contacts">
+  <input name="name" placeholder="name *" required> <input name="email" placeholder="email">
+  <input name="company" placeholder="company / lab"> <input name="role" placeholder="role">
+  <input name="notes" placeholder="notes (e.g. met at office hours)" size="30">
+  <button class="primary">Add</button>
+</form>
+{% endblock %}

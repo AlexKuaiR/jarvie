@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block body %}
+<h2>Compare backends</h2>
+<p class="muted">The same postings scored by each backend with the real scoring prompt; nothing here changes your saved scores. Run one:
+<code>.venv/bin/python -m jarvie.career.compare --n 10 --backends codex claude-code:sonnet</code></p>
+{% if past %}
+<p>Runs: {% for r in past %}<a href="/compare?run={{ r.run_id }}" class="{{ 'pill' if r.run_id == run }}">{{ r.at[:16] }} · {{ r.backends }} · {{ r.postings }} postings</a>{% if not loop.last %} &nbsp;{% endif %}{% endfor %}</p>
+{% endif %}
+{% if t %}
+{% for b, e in t.errors.items() %}<div class="flash">{{ b }}: {{ e }}</div>{% endfor %}
+<table>
+  <tr><th>Posting</th>{% for b in t.backends %}<th>{{ b }} <span class="muted">({{ t.seconds[b] }}s)</span></th>{% endfor %}</tr>
+  {% for row in t.rows %}
+  <tr>
+    <td>{% if row.posting %}<a href="/postings/{{ row.posting.id }}">{{ row.posting.title }}</a><div class="muted">{{ row.posting.company }}</div>{% else %}<span class="muted">deleted posting</span>{% endif %}</td>
+    {% for b in t.backends %}{% set s = row.by_backend.get(b) %}
+    <td>{% if s %}
+      <div>fit <b>{{ s.fit_score if s.fit_score is not none else "-" }}</b> · prestige {{ s.prestige or "-" }} · competitive {{ s.competitiveness or "-" }} · ownership {{ s.ownership or "-" }}{% if s.resume %} · resume {{ s.resume }}{% endif %}</div>
+      <div class="muted">{{ s.fit_reasons or "" }}</div>
+      {% if s.prestige_reason %}<div class="muted">prestige: {{ s.prestige_reason }}</div>{% endif %}
+      {% if s.ownership_reason %}<div class="muted">ownership: {{ s.ownership_reason }}</div>{% endif %}
+      {% if s.deadline or s.pay %}<div class="muted">{{ s.deadline or "" }} {{ s.pay or "" }}</div>{% endif %}
+    {% else %}<span class="muted">not scored</span>{% endif %}</td>
+    {% endfor %}
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">No comparisons yet.</p>
+{% endif %}
+{% endblock %}

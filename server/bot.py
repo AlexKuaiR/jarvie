@@ -52,7 +52,10 @@ from pipecat.turns.user_turn_strategies import (
     default_user_turn_start_strategies,
 )
 
+from jarvie.career.tools import CAREER_TOOLS
 from jarvie.config import TZ
+from jarvie.job_tools import JOB_TOOLS
+from jarvie.outreach.tools import OUTREACH_TOOLS
 from jarvie.tools import ALL_TOOLS, briefing, warmup
 from jarvie.wake import AwakeAtStartWakePhrase
 from jarvie.wake_phrases import DEEPGRAM_KEYTERMS, STAGE2_PHRASES
@@ -100,7 +103,11 @@ async def run_bot(transport: BaseTransport):
         ),
     )
 
-    context = LLMContext(messages=[], tools=ALL_TOOLS)
+    # Career search and outreach tools live in their own packages; see jarvie/career,
+    # jarvie/outreach and jarvie/job_tools.py.
+    context = LLMContext(
+        messages=[], tools=[*ALL_TOOLS, *JOB_TOOLS, *CAREER_TOOLS, *OUTREACH_TOOLS]
+    )
 
     # Stage-2 wake word: while the bot runs, saying "jarvie" opens a turn (any spelling Deepgram
     # may use; see jarvie/wake_phrases.py). Starts awake so you can answer the greeting directly;
