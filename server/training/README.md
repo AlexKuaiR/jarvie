@@ -14,6 +14,7 @@ transcript. They're for the planned Raspberry Pi edge detector.
 | `server/training/monitor.py` | Terminal progress view of every stage, independent of the notebook |
 | `server/training/real_data.py` | Trims your recordings to the 2 s training format and writes oversampled copies |
 | `server/training/RECORDING_GUIDE.md` | **Start here for recording**: sessions, test days, other people, training, choosing models |
+| `server/training/STAGE2_GATE.md` | Design (not built): the name model gating audio to Deepgram, and what that needs from the model |
 | `server/training/record_session.py`, `recording_prompts.txt` | Guided recording of training/test clips from a prompt list |
 | `server/training/train_wakeword_colab.ipynb` | Earlier Colab version; superseded by the RunPod notebook |
 | `server/jarvie/eval/wakeword.py` | Scores recorded clips with a trained model; recall / false accepts / thresholds |
@@ -62,10 +63,11 @@ redo it. Re-running unchanged settings (in any session, on any GPU) returns cach
 `tts_batch_size` is excluded from the key (it only changes speed).
 
 ```python
-pipe.run("A")                                                   # everything, once
-pipe.run("B")                                                   # reuses A's speech
+pipe.run("A")  # everything, once
+pipe.run("B")  # reuses A's speech
 pipe.run("B", trial="lr3e-4", steps=20000, learning_rate=3e-4)  # training only
-pipe.prepare_noise("room"); pipe.run("C")                       # your room's noise
+pipe.prepare_noise("room")
+pipe.run("C")  # your room's noise
 ```
 
 Layout on the RunPod network volume (`/workspace/wakeword/`): `data/` (livekit setup, ~16 GB,
