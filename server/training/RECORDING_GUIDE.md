@@ -19,8 +19,8 @@ the bot runs, so the transcript can catch it, and the sessions below no longer r
 ## 0. Once, before the first session
 
 ```bash
-cd ~/pipecat-quickstart/server
-git switch wakeword-eval && git pull
+cd ~/jarvie-wakeword/server    # the wakeword-eval worktree (already on that branch)
+git pull
 uv run python training/record_session.py --list     # every section and how many lines it has
 ```
 - macOS: Control Center -> Mic Mode -> **Standard** (Voice Isolation strips background noise).
@@ -86,8 +86,11 @@ on other days; more clean desk takes (session 3) help least.
   typo doesn't create a new label.
 
 ### Stopping and resuming
-- `q` stops and prints e.g. `Resume with --start 11`. Rerun **the same command** plus `--start 11`
-  (it applies to the first section in the command).
+- `q` stops the whole command and prints what to rerun, e.g.
+  `Resume with: name-fast name-slow --start 3`. Run those sections with the same flags as before
+  (`--position`, `--condition`, `--shuffle`, ...) plus that `--start`; it skips takes in the first
+  section only. `--shuffle` gives the same order every time, so resuming skips exactly the takes
+  already recorded.
 - Numbering continues from the highest existing file per label, so stopping, resuming or recording
   over several days never overwrites anything.
 - A bad take noticed later: delete the `.wav` and its line in that folder's `manifest.csv`, or keep it.
@@ -111,7 +114,8 @@ uv run python training/record_session.py wake-normal name-normal neg-jarvis neg-
 uv run python training/record_session.py name-normal name-fast neg-name-very-similar --position desk --condition talk --split test --shuffle
 uv run python training/record_session.py neg-everyday --position desk --condition room --minutes 30 --split test
 ```
-They go to `~/jarvie-data/audio/<wake|sleep|name>/`. Record the last one (passive, as in session 14)
+They go to `~/jarvie-data/audio/<wake|sleep|name>/`; the everyday recordings always go to `audio/wake/`,
+and the Gate table finds them there for every `MODE`. Record the last one (passive, as in session 14)
 on at least two days, for an hour or more in total: with only 10 minutes, a single false fire
 already reads as 6 per hour. If you keep the sleep model, also record
 `sleep-normal neg-sleep-similar --position bed --condition quiet --split test`.
@@ -134,20 +138,31 @@ Keep 1-2 people **test-only** (add `--split test`); their clips go to
    `mkdir -p /workspace/wakeword/real/uploads && cd /workspace/wakeword/real/uploads && runpodctl receive <code>`.
 4. Notebook: restart the kernel; cells 1-3; **the stage-2 cell** (adds `jarvie_name`); cell 4.
 5. `pipe.prepare_real("v1")`: check the counts per speaker and label.
-6. `pipe.run("B")`: M1. Wake/sleep are cached; `jarvie_name` generates its synthetic speech once.
+6. `pipe.run("B")`: M1. The first run after a phrase-list change regenerates that model's synthetic
+   speech (~1-2 h each). The current models are from before "jarvie, are you up" was added, so the
+   next run regenerates wake and sleep (sleep's negatives include the wake phrases), plus
+   `jarvie_name` once. Runs after that reuse it.
 7. Section 7b: M2 `pipe.run("B", real="v1")`, M3 `pipe.run("B", real="v1", synthetic=False)`,
    M4 (the fine-tune cell). Monitor with `watch -n 60 python /workspace/wakeword/monitor.py`.
-8. Download `/workspace/wakeword/models/` (`runpodctl send`), copy the `.onnx` files into
-   `server/models/` on the Mac, **stop the pod**.
+   **No sleep recordings** (the sessions above don't make any): M3 trains on your recordings only,
+   so run it as `pipe.run("B", real="v1", synthetic=False, models=["jarvie_wake", "jarvie_name"])`;
+   `jarvie_sleep` would have no positives at all. M2 and M4 can keep `jarvie_sleep` (synthetic sleep
+   speech, with your recordings as negatives); add the same `models=[...]` to skip it.
+8. Download `/workspace/wakeword/models/` (`runpodctl send`), **stop the pod**. On the Mac, move the
+   old models aside first, so new files with the same names (`jarvie_wake__B__base.onnx`) don't mix
+   with them: `mkdir -p server/models/old && mv server/models/*.onnx server/models/results.csv
+   server/models/old/` (the notebook only reads `server/models/` itself, not subfolders). Then copy
+   the new `.onnx` files into `server/models/`.
 
 ## 6. Choose models (Mac)
 
 `server/jarvie/eval/compare_models.ipynb`: set `MODE = "wake"`, Restart, Run All; then `"name"`
-(and `"sleep"` if you kept it).
+(and `"sleep"`, which needs the optional sleep test recording from section 3). The first cell prints `ready to evaluate` or what's still missing
+(models in `server/models/`, test recordings); the run stops there until both exist.
 - **Personal model**: the best row in the Personal table (lowest `eer_normal`, then fast/slow recall,
   then the lowest `fires_similar` / `fires_very-similar`). For the name model as a gate, what matters
-  most is recall at a low threshold and false fires per hour of everyday audio; the notebook doesn't
-  report that yet (see `STAGE2_GATE.md`).
+  most is recall at a low threshold and false fires per hour of everyday audio: the Gate table
+  (`gate_recall` within `MAX_FPPH`; see `STAGE2_GATE.md`).
 - **Deployment model**: the best row in the General table (needs other people's test recordings);
   it must beat M1 (`B`) there.
 
