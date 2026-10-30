@@ -1,9 +1,14 @@
 # Wake-word training and evaluation
 
-How Jarvie's custom wake/sleep models are recorded, trained (livekit-wakeword on RunPod) and
+How Jarvie's custom wake-word models are recorded, trained (livekit-wakeword on RunPod) and
 evaluated on real voice recordings, plus a log of results and the problems hit along the way.
-The bot itself doesn't use these models yet; it still matches "jarvis" in the speech-to-text
-transcript. They're for the planned Raspberry Pi edge detector.
+There are three models: `jarvie_wake` (stage 1, a full phrase like "jarvie, wake up"),
+`jarvie_name` (stage 2, "jarvie" alone) and `jarvie_sleep` (optional).
+
+The bot doesn't use these models yet. It matches the phrases in `server/jarvie/wake_phrases.py`
+against the Deepgram transcript ("jarvis" deliberately doesn't count). The models are for the
+planned local wake-word daemon / Raspberry Pi edge detector, and possibly the stage-2 gate in
+`STAGE2_GATE.md`.
 
 ## Files
 
@@ -17,34 +22,47 @@ transcript. They're for the planned Raspberry Pi edge detector.
 | `server/training/STAGE2_GATE.md` | Design (not built): the name model gating audio to Deepgram, and what that needs from the model |
 | `server/training/record_session.py`, `recording_prompts.txt` | Guided recording of training/test clips from a prompt list |
 | `server/training/train_wakeword_colab.ipynb` | Earlier Colab version; superseded by the RunPod notebook |
+| `server/jarvie/eval/compare.py`, `compare_models.ipynb` | **Start here for evaluation**: every `jarvie_<MODE>*.onnx` in `server/models/` on your and other people's test recordings, plus false fires per hour of everyday audio (run on the Mac) |
 | `server/jarvie/eval/wakeword.py` | Scores recorded clips with a trained model; recall / false accepts / thresholds |
-| `server/jarvie/eval/wakeword_eval.ipynb` | Evaluation on real recordings (run on the Mac) |
+| `server/jarvie/eval/wakeword_eval.ipynb` | Older single-model evaluation; expects `jarvie_wake.onnx` / `jarvie_sleep.onnx` exactly |
 | `server/jarvie/eval/gating.py`, `gating_eval.ipynb` | Always-on bot vs wake-word daemon: accuracy (Deepgram transcript matching vs the local model) and cost per day |
-| `server/scratch/record.py` | Records labeled clips into `~/jarvie-data/audio/<mode>/` |
 | `server/models/` | The `.onnx` models currently being evaluated (not committed) |
-| `server/tests/test_wakeword_pipeline.py`, `test_wakeword_eval.py` | Tests for both |
+| `server/tests/test_wakeword_pipeline.py`, `test_real_data.py`, `test_record_session.py`, `test_wakeword_eval.py`, `test_compare.py`, `test_compare_e2e.py` | Tests for the above |
 
 ## Workflow
 
-1. **Record** real clips on the Mac with `scratch/record.py` (naming below).
-2. **Train** on RunPod with `train_wakeword_runpod.ipynb` (variants A, B, C and tuning trials).
-3. **Download** the `.onnx` files, copy the one to test into `server/models/` as
-   `jarvie_wake.onnx` / `jarvie_sleep.onnx`.
-4. **Evaluate** with `jarvie/eval/wakeword_eval.ipynb`: restart the kernel, Run All.
+`RECORDING_GUIDE.md` has the full step-by-step version.
 
-### Recording (`scratch/record.py`)
+1. **Record** training and test clips on the Mac with `training/record_session.py` (below).
+2. **Train** on RunPod with `train_wakeword_runpod.ipynb` (variants A, B, C, the M1-M4 families
+   and tuning trials).
+3. **Download** the `.onnx` files. Move the previous ones to `server/models/old/` (the notebook
+   doesn't look in subfolders), then copy the new ones into `server/models/` with their names
+   unchanged (`<model>__<variant>__<trial>.onnx`).
+4. **Evaluate** with `jarvie/eval/compare_models.ipynb`: set `MODE` (`wake`, `name` or `sleep`),
+   restart the kernel, Run All. It prints what's missing if it isn't ready.
+
+### Recording (`training/record_session.py`)
 
 ```
-uv run python scratch/record.py pos_desk_quiet_wake wake 15 --pace fast
-uv run python scratch/record.py neg_desk_loud_wake wake 10 --pace normal --similarity similar
+uv run python training/record_session.py --list
+uv run python training/record_session.py wake-normal name-normal --position desk --condition quiet
+uv run python training/record_session.py name-normal --position desk --condition quiet --split test
 ```
 
-Clip names: `<kind>[-<similarity>]_<position>_<condition>-<pace>_<phrase>_<index>.wav`, e.g.
+Each section in `recording_prompts.txt` is one label; the recorder beeps, records 4 s per take,
+warns about clipped, quiet or cut-off takes, and logs every take (with its text) in the folder's
+`manifest.csv`. `q` stops the whole command and prints how to resume (`--start N`).
+
+Clip names: `<kind>[-<similarity>]_<position>_<condition>-<pace>_<mode>_<index>.wav`, e.g.
 `neg-very-similar_desk_loud-normal_wake_014.wav`. Pace (`fast`/`normal`/`slow`) is folded into the
 condition and similarity (`not-similar`/`similar`/`very-similar`, negatives only) into the kind, so
 names keep 5 underscore fields. Numbering continues from the highest existing index per label.
-Record with macOS Mic Mode on **Standard** (Voice Isolation strips background noise), and press
-Enter, wait ~0.5 s, then speak, so the key click isn't part of the phrase.
+Record with macOS Mic Mode on **Standard** (Voice Isolation strips background noise).
+
+Evaluation only scores test clips listed in a `manifest.csv`, so the 57 clips in
+`~/jarvie-data/audio/wake/` from the old `scratch/record.py` (no manifest) stay on disk but are
+ignored. Training reads every clip under `~/jarvie-data/real/`, all recorded with `record_session.py`.
 
 ## Training pipeline (`wakeword_pipeline.py`)
 
