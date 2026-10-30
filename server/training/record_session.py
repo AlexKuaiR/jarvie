@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import random
 import re
 import time
 from dataclasses import dataclass, field
@@ -212,7 +213,9 @@ def run_long(section: Section, folder: Path, lbl: str, args) -> None:
     print(f"saved {path.name}")
 
 
-def run_section(section: Section, args) -> None:
+def run_section(section: Section, args, start: int = 0) -> int | None:
+    """Record one section, skipping its first `start` takes. Returns None when the section is
+    done, or the `--start` value to resume from if you quit."""
     folder = output_dir(args.split, section.mode, args.set, args.speaker)
     lbl = label(section, args.position, args.condition)
     print(f"\n=== [{section.name}] -> {folder}  ({lbl}_NNN.wav) ===")
@@ -221,20 +224,22 @@ def run_section(section: Section, args) -> None:
     )
     if section.minutes is not None:
         run_long(section, folder, lbl, args)
-        return
+        return None
 
     takes = [line for line in section.lines for _ in range(args.repeats)]
     if args.shuffle:
-        np.random.default_rng().shuffle(takes)
-    takes = takes[args.start :]
+        # Seeded by the label, so rerunning the same command gives the same order and
+        # --start skips exactly the takes already recorded.
+        random.Random(lbl).shuffle(takes)
+    takes = takes[start:]
     kept = 0
-    for n, text in enumerate(takes, start=args.start + 1):
+    for n, text in enumerate(takes, start=start + 1):
         while True:
-            print(f"\n[{n}/{len(takes) + args.start}]  say:  {text}")
+            print(f"\n[{n}/{len(takes) + start}]  say:  {text}")
             reply = input("  Enter = record, s = skip, q = quit: ").strip().lower()
             if reply == "q":
-                print(f"\nstopped; kept {kept} take(s). Resume with --start {n - 1}")
-                return
+                print(f"\nstopped; kept {kept} take(s).")
+                return n - 1
             if reply == "s":
                 break
             beep()
@@ -263,6 +268,7 @@ def run_section(section: Section, args) -> None:
             print(f"  saved {path.name}")
             break
     print(f"\n[{section.name}] done: kept {kept} take(s) in {folder}")
+    return None
 
 
 def main() -> None:
@@ -311,8 +317,13 @@ def main() -> None:
     unknown = [n for n in args.sections if n not in sections]
     if unknown:
         raise SystemExit(f"unknown section(s): {', '.join(unknown)} (see --list)")
-    for name in args.sections:
-        run_section(sections[name], args)
+    # --start applies to the first section only; quitting stops the whole command.
+    for i, name in enumerate(args.sections):
+        stopped = run_section(sections[name], args, args.start if i == 0 else 0)
+        if stopped is not None:
+            rest = " ".join(args.sections[i:])
+            print(f"Resume with: {rest} --start {stopped}  (and the same flags as before)")
+            return
 
 
 if __name__ == "__main__":

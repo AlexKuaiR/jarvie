@@ -128,3 +128,63 @@ def test_name_sections_for_the_stage2_model():
     for s in sections.values():
         if any("jarvis" in line.lower() for line in s.lines):
             assert s.kind == "neg", s.name
+
+
+def fake_session(monkeypatch, replies):
+    """Run the recorder without a mic: scripted replies to input(), and saves logged, not written."""
+    saved = []
+    answers = iter(replies)
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    monkeypatch.setattr(rs, "beep", lambda *a, **k: None)
+    monkeypatch.setattr(rs, "record", lambda seconds: np.zeros(rs.SR, dtype="float32"))
+    monkeypatch.setattr(rs, "check_take", lambda audio: [])
+
+    def save(audio, folder, lbl, text, *rest):
+        saved.append(text)
+        return Path(f"{lbl}_{len(saved):03d}.wav")
+
+    monkeypatch.setattr(rs, "save", save)
+    return saved
+
+
+SECTIONS = rs.parse_prompts("[a] kind=pos pace=normal mode=name\nl1\nl2\nl3\nl4\nl5\n")
+
+
+def session_args(shuffle=False):
+    return type(
+        "A",
+        (),
+        dict(
+            split="train",
+            set="v1",
+            speaker="me",
+            position="desk",
+            condition="quiet",
+            repeats=1,
+            shuffle=shuffle,
+            minutes=None,
+        ),
+    )()
+
+
+def test_quit_and_resume_records_every_take_once_even_shuffled(monkeypatch):
+    # Record two takes (Enter to record, Enter to keep), then quit.
+    saved = fake_session(monkeypatch, ["", "", "", "", "q"])
+    stopped = rs.run_section(SECTIONS["a"], session_args(shuffle=True))
+    assert stopped == 2 and len(saved) == 2
+    # Resume with --start 2: the same shuffled order, so the other three lines follow.
+    resumed = fake_session(monkeypatch, [""] * 6)
+    assert rs.run_section(SECTIONS["a"], session_args(shuffle=True), start=stopped) is None
+    assert sorted(saved + resumed) == ["l1", "l2", "l3", "l4", "l5"]
+
+
+def test_quit_stops_the_whole_command(monkeypatch, capsys, tmp_path):
+    prompts = tmp_path / "p.txt"
+    prompts.write_text(
+        "[a] kind=pos pace=normal mode=name\nl1\nl2\n[b] kind=pos pace=normal mode=name\nl3\n"
+    )
+    saved = fake_session(monkeypatch, ["", "", "q"])
+    monkeypatch.setattr("sys.argv", ["record_session.py", "a", "b", "--prompts", str(prompts)])
+    rs.main()
+    assert saved == ["l1"]  # section b never started
+    assert "Resume with: a b --start 1" in capsys.readouterr().out
