@@ -11,8 +11,15 @@ PROMPTS = Path(rs.__file__).with_name("recording_prompts.txt")
 
 def test_real_prompt_file_parses():
     sections = rs.parse_prompts(PROMPTS.read_text())
-    assert {"wake-normal", "wake-fast", "wake-slow", "neg-very-similar", "neg-similar",
-            "neg-everyday", "sleep-normal"} <= set(sections)
+    assert {
+        "wake-normal",
+        "wake-fast",
+        "wake-slow",
+        "neg-very-similar",
+        "neg-similar",
+        "neg-everyday",
+        "sleep-normal",
+    } <= set(sections)
     assert all(s.kind in {"pos", "neg"} for s in sections.values())
     assert sections["neg-everyday"].minutes == 5
     assert len(sections["wake-normal"].lines) >= 20
@@ -71,7 +78,12 @@ def test_check_take():
     noise = np.random.default_rng(0).normal(0, 0.002, t.size)
     speech = noise + 0.3 * np.sin(2 * np.pi * 200 * t) * ((t > 0.8) & (t < 2.0))
     assert rs.check_take(speech.astype("float32")) == []
-    assert any("cut off" in p for p in rs.check_take((noise + 0.3 * np.sin(2 * np.pi * 200 * t) * (t > 2.5)).astype("float32")))
+    assert any(
+        "cut off" in p
+        for p in rs.check_take(
+            (noise + 0.3 * np.sin(2 * np.pi * 200 * t) * (t > 2.5)).astype("float32")
+        )
+    )
     assert any("clipped" in p for p in rs.check_take(np.clip(speech * 5, -1, 1).astype("float32")))
     assert any("quiet" in p for p in rs.check_take((speech * 0.05).astype("float32")))
     assert any("no clear speech" in p for p in rs.check_take(noise.astype("float32")))
@@ -79,11 +91,16 @@ def test_check_take():
 
 def test_save_names_and_manifest(tmp_path):
     section = rs.parse_prompts("[x] kind=pos pace=normal\njarvie, wake up")["x"]
-    args = type("A", (), {"position": "desk", "condition": "quiet", "split": "train", "speaker": "me"})()
+    args = type(
+        "A", (), {"position": "desk", "condition": "quiet", "split": "train", "speaker": "me"}
+    )()
     audio = np.zeros(rs.SR, dtype="float32")
     p1 = rs.save(audio, tmp_path, "pos_desk_quiet-normal_wake", "jarvie, wake up", section, args)
     p2 = rs.save(audio, tmp_path, "pos_desk_quiet-normal_wake", "jarvie, wake up", section, args)
-    assert (p1.name, p2.name) == ("pos_desk_quiet-normal_wake_000.wav", "pos_desk_quiet-normal_wake_001.wav")
+    assert (p1.name, p2.name) == (
+        "pos_desk_quiet-normal_wake_000.wav",
+        "pos_desk_quiet-normal_wake_001.wav",
+    )
     import csv
 
     rows = list(csv.DictReader((tmp_path / "manifest.csv").open()))
@@ -96,7 +113,13 @@ def test_name_sections_for_the_stage2_model():
 
     sections = rs.parse_prompts(PROMPTS.read_text())
     name = {n: s for n, s in sections.items() if s.mode == "name"}
-    assert {"name-normal", "name-fast", "name-slow", "neg-name-very-similar", "neg-name-similar"} <= set(name)
+    assert {
+        "name-normal",
+        "name-fast",
+        "name-slow",
+        "neg-name-very-similar",
+        "neg-name-similar",
+    } <= set(name)
     for s in name.values():
         for line in s.lines:
             # positives say the name (and nothing after it); negatives never do

@@ -11,12 +11,28 @@ it several ways, so both stages accept the spellings below, and bot.py asks Deep
 "Jarvie" (keyterm prompting) so it isn't transcribed as "Jarvis" in the first place.
 """
 
-STAGE1_PHRASES = ["jarvie wake up", "jarvie help me", "jarvie wakie wakie", "jarvie are you up",
-                  "jarvie i need some help"]
+STAGE1_PHRASES = [
+    "jarvie wake up",
+    "jarvie help me",
+    "jarvie wakie wakie",
+    "jarvie are you up",
+    "jarvie i need some help",
+]
 
 # How Deepgram may write "jarvie" in a transcript. "jarvis" is intentionally absent.
-JARVIE_SPELLINGS = ["jarvie", "jarvy", "jarvey", "jarvee", "jarvi", "jervy", "jervie", "javi",
-                    "javy", "jarbi", "jarby"]
+JARVIE_SPELLINGS = [
+    "jarvie",
+    "jarvy",
+    "jarvey",
+    "jarvee",
+    "jarvi",
+    "jervy",
+    "jervie",
+    "javi",
+    "javy",
+    "jarbi",
+    "jarby",
+]
 
 # Stage 2: the name alone, in any of those spellings.
 STAGE2_PHRASES = JARVIE_SPELLINGS

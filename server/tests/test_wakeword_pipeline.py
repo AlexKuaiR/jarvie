@@ -67,7 +67,9 @@ def fake_livekit(calls: Counter, seen: dict) -> SimpleNamespace:
     class Trainer:  # stand-in for livekit's WakeWordTrainer, used for warm starts
         def __init__(self, cfg):
             self.cfg = cfg
-            self.model = SimpleNamespace(load_state_dict=lambda state: seen.__setitem__("init_state", state))
+            self.model = SimpleNamespace(
+                load_state_dict=lambda state: seen.__setitem__("init_state", state)
+            )
 
         def train(self):
             calls["train", self.cfg.model_name] += 1
@@ -77,9 +79,15 @@ def fake_livekit(calls: Counter, seen: dict) -> SimpleNamespace:
             Path(path).write_bytes(b"fine-tuned")
 
     return SimpleNamespace(
-        WakeWordConfig=Config, run_generate=run_generate, run_augment=run_augment,
-        run_extraction=run_extraction, run_train=run_train, run_export=run_export,
-        run_eval=run_eval, augment_module=augment_module, WakeWordTrainer=Trainer,
+        WakeWordConfig=Config,
+        run_generate=run_generate,
+        run_augment=run_augment,
+        run_extraction=run_extraction,
+        run_train=run_train,
+        run_export=run_export,
+        run_eval=run_eval,
+        augment_module=augment_module,
+        WakeWordTrainer=Trainer,
         load_weights=lambda path: {"weights_from": str(path)},
     )
 
@@ -156,8 +164,12 @@ def test_tts_batch_size_does_not_invalidate_speech(setup):
 def test_changing_phrases_regenerates_that_model_only(setup):
     make, calls, _, _ = setup
     make().run("A")
-    make(phrases={"jarvie_wake": ["jarvie, wake up", "jarvie, help me"],
-                  "jarvie_sleep": ["jarvie, go to sleep"]}).run("A")
+    make(
+        phrases={
+            "jarvie_wake": ["jarvie, wake up", "jarvie, help me"],
+            "jarvie_sleep": ["jarvie, go to sleep"],
+        }
+    ).run("A")
     assert calls["generate", "jarvie_wake"] == 2
     assert calls["generate", "jarvie_sleep"] == 1
 
@@ -340,8 +352,12 @@ def test_gpu_memory_released_after_each_stage_that_ran(setup, monkeypatch):
     pipe = make()
     pipe.run("A")
     assert released == [
-        "gen jarvie_wake", "aug jarvie_wake [A]", "train jarvie_wake [A/base]",
-        "gen jarvie_sleep", "aug jarvie_sleep [A]", "train jarvie_sleep [A/base]",
+        "gen jarvie_wake",
+        "aug jarvie_wake [A]",
+        "train jarvie_wake [A/base]",
+        "gen jarvie_sleep",
+        "aug jarvie_sleep [A]",
+        "train jarvie_sleep [A/base]",
     ]
     released.clear()
     pipe.run("A")  # everything cached: nothing ran, nothing to release
@@ -369,8 +385,11 @@ def add_real_recordings(root: Path, n: int = 3) -> None:
 
     t = np.arange(4 * 16000) / 16000
     clip = (0.3 * np.sin(2 * np.pi * 220 * t) * ((t > 1) & (t < 2.2))).astype("float32")
-    for speaker, mode, kind in [("me", "wake", "pos"), ("me", "wake", "neg-very-similar"),
-                                ("me", "sleep", "pos")]:
+    for speaker, mode, kind in [
+        ("me", "wake", "pos"),
+        ("me", "wake", "neg-very-similar"),
+        ("me", "sleep", "pos"),
+    ]:
         folder = root / "real/uploads/v1" / speaker / mode
         folder.mkdir(parents=True, exist_ok=True)
         for i in range(n):
@@ -378,7 +397,11 @@ def add_real_recordings(root: Path, n: int = 3) -> None:
 
 
 def train_split(root: Path, model: str, label_glob: str, split: str) -> list[str]:
-    aug = [d for d in (root / "stages/aug").glob(f"{model}-*") if label_glob in (d / "settings.json").read_text()]
+    aug = [
+        d
+        for d in (root / "stages/aug").glob(f"{model}-*")
+        if label_glob in (d / "settings.json").read_text()
+    ]
     assert len(aug) == 1, aug
     return sorted(p.name for p in (aug[0] / model / split).glob("clip_??????.wav"))
 
@@ -395,7 +418,9 @@ def test_m2_adds_real_copies_and_reuses_speech(setup):
     assert len(pos) - len(real_pos) == 30  # all synthetic clips
     assert len(real_pos) == 3 * 4  # 3 wake positives x 4 copies
     neg = train_split(root, "jarvie_wake", '"real": "v1"', "negative_train")
-    assert len([n for n in neg if n >= "clip_900000.wav"]) == (3 + 3) * 4  # near-misses + sleep phrases
+    assert (
+        len([n for n in neg if n >= "clip_900000.wav"]) == (3 + 3) * 4
+    )  # near-misses + sleep phrases
     assert (root / "models/jarvie_wake__B+real-v1__base.onnx").exists()
 
 
@@ -405,7 +430,9 @@ def test_m3_real_only_keeps_synthetic_test_splits(setup):
     make().run("B", real="v1", synthetic=False, real_repeat=2, models=["jarvie_wake"])
     pos = train_split(root, "jarvie_wake", "synthetic_share", "positive_train")
     assert pos and all(n >= "clip_900000.wav" for n in pos)  # no synthetic training clips
-    assert len(train_split(root, "jarvie_wake", "synthetic_share", "positive_test")) == 30  # validation kept
+    assert (
+        len(train_split(root, "jarvie_wake", "synthetic_share", "positive_test")) == 30
+    )  # validation kept
     assert (root / "models/jarvie_wake__B+real-v1-nosyn__base.onnx").exists()
 
 
@@ -424,8 +451,15 @@ def test_m4_fine_tunes_from_b(setup):
     with pytest.raises(RuntimeError, match="no finished training run"):
         pipe.run("B", trial="ft", real="v1", init_from=("B", "base"), models=["jarvie_wake"])
     pipe.run("B", models=["jarvie_wake"])
-    pipe.run("B", trial="ft", real="v1", synthetic_share=0.1, init_from=("B", "base"),
-             steps=50, models=["jarvie_wake"])
+    pipe.run(
+        "B",
+        trial="ft",
+        real="v1",
+        synthetic_share=0.1,
+        init_from=("B", "base"),
+        steps=50,
+        models=["jarvie_wake"],
+    )
     assert seen["warm_started", "jarvie_wake"] is True
     assert "jarvie_wake.pt" in seen["init_state"]["weights_from"]
     assert (root / "models/jarvie_wake__B+real-v1-syn10__ft.onnx").exists()

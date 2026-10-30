@@ -34,8 +34,19 @@ MODES = ("wake", "sleep", "name")
 try:  # the single source of truth when the jarvie package is importable (the Mac, tests)
     from jarvie.wake_phrases import JARVIE_SPELLINGS
 except ImportError:  # on RunPod only training/ is uploaded; keep in sync (a test checks it)
-    JARVIE_SPELLINGS = ["jarvie", "jarvy", "jarvey", "jarvee", "jarvi", "jervy", "jervie", "javi",
-                        "javy", "jarbi", "jarby"]
+    JARVIE_SPELLINGS = [
+        "jarvie",
+        "jarvy",
+        "jarvey",
+        "jarvee",
+        "jarvi",
+        "jervy",
+        "jervie",
+        "javi",
+        "javy",
+        "jarbi",
+        "jarby",
+    ]
 
 
 @dataclass(frozen=True)
@@ -68,7 +79,9 @@ def collect(uploads: Path) -> list[RealClip]:
             continue
         if path.parent not in texts:
             texts[path.parent] = _manifest_texts(path.parent)
-        clips.append(RealClip(path, speaker, mode, kind, similarity, texts[path.parent].get(path.name, "")))
+        clips.append(
+            RealClip(path, speaker, mode, kind, similarity, texts[path.parent].get(path.name, ""))
+        )
     return clips
 
 
@@ -139,7 +152,12 @@ def speech_bounds(audio: np.ndarray, sr: int = SR) -> tuple[float, float] | None
     frame = int(0.02 * sr)
     if len(audio) < frame:
         return None
-    rms = np.array([np.sqrt(np.mean(audio[i:i + frame] ** 2)) for i in range(0, len(audio) - frame + 1, frame)])
+    rms = np.array(
+        [
+            np.sqrt(np.mean(audio[i : i + frame] ** 2))
+            for i in range(0, len(audio) - frame + 1, frame)
+        ]
+    )
     active = np.where(rms > max(np.percentile(rms, 10) * 4, rms.max() * 0.15, 1e-4))[0]
     if len(active) == 0:
         return None
@@ -151,7 +169,7 @@ def _window(audio: np.ndarray, start: int, length: int) -> np.ndarray:
     out = np.zeros(length, dtype=np.float32)
     src_lo, src_hi = max(start, 0), min(start + length, len(audio))
     if src_hi > src_lo:
-        out[src_lo - start:src_hi - start] = audio[src_lo:src_hi]
+        out[src_lo - start : src_hi - start] = audio[src_lo:src_hi]
     return out
 
 
@@ -180,7 +198,7 @@ def chunk_long(audio: np.ndarray, sr: int = SR, hop_seconds: float = 1.0) -> lis
     length, hop = int(CLIP_SECONDS * sr), int(hop_seconds * sr)
     chunks = []
     for start in range(0, max(len(audio) - length, 0) + 1, hop):
-        chunk = audio[start:start + length]
+        chunk = audio[start : start + length]
         if len(chunk) == length and speech_bounds(chunk, sr) is not None:
             chunks.append(chunk.astype(np.float32))
     return chunks
@@ -195,8 +213,15 @@ def speaker_perturb(audio: np.ndarray, rng: random.Random) -> np.ndarray:
 # --- writing training copies -----------------------------------------------------------------
 
 
-def write_copies(clips: list[RealClip], role: str, dest: Path, repeat: int, speaker_aug: bool,
-                 seed: str, start_index: int = REAL_INDEX_START) -> tuple[int, int]:
+def write_copies(
+    clips: list[RealClip],
+    role: str,
+    dest: Path,
+    repeat: int,
+    speaker_aug: bool,
+    seed: str,
+    start_index: int = REAL_INDEX_START,
+) -> tuple[int, int]:
     """Write `repeat` training clips per recording into `dest` as clip_9NNNNN.wav.
 
     role is "pos" or "neg" (how this model should treat these recordings). Long recordings are

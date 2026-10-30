@@ -12,7 +12,9 @@ SR = rd.SR
 def phrase_clip(seconds=4.0, start=1.0, end=2.2, level=0.3):
     t = np.arange(int(seconds * SR)) / SR
     noise = np.random.default_rng(0).normal(0, 0.002, t.size)
-    return (noise + level * np.sin(2 * np.pi * 220 * t) * ((t > start) & (t < end))).astype("float32")
+    return (noise + level * np.sin(2 * np.pi * 220 * t) * ((t > start) & (t < end))).astype(
+        "float32"
+    )
 
 
 def test_speech_bounds():
@@ -63,7 +65,9 @@ def make_uploads(tmp_path):
         "me/wake/neg-very-similar_desk_quiet-normal_wake_000.wav": phrase_clip(),
         "me/sleep/pos_bed_quiet-normal_sleep_000.wav": phrase_clip(),
         "sam/wake/pos_far_quiet-fast_wake_000.wav": phrase_clip(),
-        "me/wake/neg-not-similar_desk_quiet-normal_wake_001.wav": phrase_clip(seconds=10, start=1, end=9),
+        "me/wake/neg-not-similar_desk_quiet-normal_wake_001.wav": phrase_clip(
+            seconds=10, start=1, end=9
+        ),
         "me/wake/silent_take.wav": np.zeros(SR, dtype="float32"),  # not a labeled name: ignored
     }
     for rel, audio in files.items():
@@ -76,7 +80,10 @@ def make_uploads(tmp_path):
 def test_collect_summary_and_roles(tmp_path):
     clips = rd.collect(make_uploads(tmp_path))
     assert len(clips) == 5
-    assert rd.summary(clips) == {"me": {"wake/pos": 1, "wake/neg": 2, "sleep/pos": 1}, "sam": {"wake/pos": 1}}
+    assert rd.summary(clips) == {
+        "me": {"wake/pos": 1, "wake/neg": 2, "sleep/pos": 1},
+        "sam": {"wake/pos": 1},
+    }
     pos, neg = rd.training_roles(clips, "wake")
     assert len(pos) == 2  # me + sam wake positives
     assert len(neg) == 3  # wake negatives + the sleep phrase (cross-negative)
@@ -94,7 +101,9 @@ def test_fingerprint_changes_with_recordings(tmp_path):
 def test_write_copies(tmp_path):
     clips = rd.collect(make_uploads(tmp_path))
     pos, neg = rd.training_roles(clips, "wake")
-    end, silent = rd.write_copies(pos, "pos", tmp_path / "out", repeat=5, speaker_aug=True, seed="s")
+    end, silent = rd.write_copies(
+        pos, "pos", tmp_path / "out", repeat=5, speaker_aug=True, seed="s"
+    )
     files = sorted((tmp_path / "out").glob("clip_*.wav"))
     assert len(files) == 2 * 5 and end == rd.REAL_INDEX_START + 10 and silent == 0
     assert all(sf.info(str(f)).frames == int(rd.CLIP_SECONDS * SR) for f in files)
@@ -112,7 +121,9 @@ def test_spellings_fallback_matches_the_shared_list():
     from jarvie.wake_phrases import JARVIE_SPELLINGS
 
     source = Path(rd.__file__).read_text()
-    fallback = re.search(r"except ImportError:.*?JARVIE_SPELLINGS = (\[.*?\])", source, re.S).group(1)
+    fallback = re.search(r"except ImportError:.*?JARVIE_SPELLINGS = (\[.*?\])", source, re.S).group(
+        1
+    )
     assert eval(fallback) == JARVIE_SPELLINGS
 
 

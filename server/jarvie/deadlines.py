@@ -110,6 +110,7 @@ def mute(item_id: int, days: int = 3) -> bool:
             > 0
         )
 
+
 # get overdue assignments
 def overdue() -> list[dict]:
     # Compare dates, not datetimes: stored dates are "YYYY-MM-DD", and as strings

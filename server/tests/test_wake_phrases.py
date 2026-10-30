@@ -19,11 +19,15 @@ def stage2_matches(text: str) -> bool:
     return any(p.search(cleaned) for p in strategy._patterns)
 
 
-@pytest.mark.parametrize("text", ["Jarvie", "Jarvie, what's on my calendar?", "hey jarvy", "Okay, Jarvee."])
+@pytest.mark.parametrize(
+    "text", ["Jarvie", "Jarvie, what's on my calendar?", "hey jarvy", "Okay, Jarvee."]
+)
 def test_stage2_name_opens_a_turn(text):
     assert stage2_matches(text)
 
 
-@pytest.mark.parametrize("text", ["Jarvis", "Jarvis, what time is it?", "Harvey", "jar of jam", "Marvin"])
+@pytest.mark.parametrize(
+    "text", ["Jarvis", "Jarvis, what time is it?", "Harvey", "jar of jam", "Marvin"]
+)
 def test_stage2_ignores_other_words(text):
     assert not stage2_matches(text)

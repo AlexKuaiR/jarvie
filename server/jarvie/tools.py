@@ -23,13 +23,16 @@ def briefing() -> str | None:
         return None
     parts = []
     if overdue_items:
-        parts.append(f"Overdue and not marked done: {json.dumps(overdue_items)}. "
-                     "Ask briefly if the user finished them; if so, call complete_deadline.")
+        parts.append(
+            f"Overdue and not marked done: {json.dumps(overdue_items)}. "
+            "Ask briefly if the user finished them; if so, call complete_deadline."
+        )
     if upcoming_items:
-        parts.append(f"Upcoming this week: {json.dumps(upcoming_items)}. "
-                     "Mention at most the two most urgent in your greeting, briefly. "
-                     "If the user says they finished one, call complete_deadline; if they "
-                     "just acknowledge it, call mute_deadline."
+        parts.append(
+            f"Upcoming this week: {json.dumps(upcoming_items)}. "
+            "Mention at most the two most urgent in your greeting, briefly. "
+            "If the user says they finished one, call complete_deadline; if they "
+            "just acknowledge it, call mute_deadline."
         )
     return " ".join(parts)
 
@@ -77,9 +80,13 @@ async def get_deadlines(params: FunctionCallParams, days: int = 7):
     upcoming_items = deadlines.upcoming(days=days)
     overdue_items = deadlines.overdue()
 
-    await params.result_callback({"found": bool(upcoming_items or overdue_items), 
-                                  "items": upcoming_items,
-                                  "overdue": overdue_items})
+    await params.result_callback(
+        {
+            "found": bool(upcoming_items or overdue_items),
+            "items": upcoming_items,
+            "overdue": overdue_items,
+        }
+    )
 
 
 async def add_deadlines(
@@ -200,7 +207,6 @@ async def update_deadline(
     await params.result_callback({"updated": ok})
 
 
-
 async def get_note(params: FunctionCallParams, status: str = "open", limit: int = 20):
     """Look up the user's dev notes: ideas, bugs and todos about Jarvie itself.
 
@@ -227,8 +233,8 @@ async def get_note(params: FunctionCallParams, status: str = "open", limit: int 
         return
     await params.result_callback({"found": bool(out), "items": out})
 
-async def add_note(params: FunctionCallParams, 
-                   text: str, category: str = "feature"):
+
+async def add_note(params: FunctionCallParams, text: str, category: str = "feature"):
     """Save a dev note about building Jarvie: an idea, a bug, or a todo.
 
     Call this when the user wants to remember something about the project,
@@ -249,9 +255,11 @@ async def add_note(params: FunctionCallParams,
         category=category,
     )
     await params.result_callback({"added": True, "id": new_id, "text": text})
-    
-async def update_note(params: FunctionCallParams, item_id: int, text: str | None = None,
-                      category: str | None = None):
+
+
+async def update_note(
+    params: FunctionCallParams, item_id: int, text: str | None = None, category: str | None = None
+):
     """Change the text or category of an existing dev note.
 
     Call this when the user corrects or reclassifies a saved note, e.g.
@@ -269,18 +277,11 @@ async def update_note(params: FunctionCallParams, item_id: int, text: str | None
         text: The full new note text.
         category: "bug", "todo", or "feature".
     """
-    fields = {
-        k: v
-        for k, v in {
-            "text": text,
-            "category": category
-        }.items()
-        if v is not None
-    }
+    fields = {k: v for k, v in {"text": text, "category": category}.items() if v is not None}
     ok = note.edit_notes(item_id, **fields)
     await params.result_callback({"updated": ok})
 
-    
+
 async def complete_note(params: FunctionCallParams, item_id: int):
     """Mark a dev note as done so it drops off the open list.
 
@@ -294,6 +295,7 @@ async def complete_note(params: FunctionCallParams, item_id: int):
     """
     ok = note.complete_note(item_id)
     await params.result_callback({"completed": ok})
+
 
 ALL_TOOLS = [
     get_events,

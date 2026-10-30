@@ -14,19 +14,34 @@ def test_eer_separable_and_overlapping():
 
 
 def clip_rows(model, rows):
-    return [{"model": model, "kind": k, "pace": p, "similarity": s, "max_score": v} for k, p, s, v in rows]
+    return [
+        {"model": model, "kind": k, "pace": p, "similarity": s, "max_score": v}
+        for k, p, s, v in rows
+    ]
 
 
 def test_summarize_per_model():
-    rows = clip_rows("good", [
-        ("pos", "normal", "", 0.9), ("pos", "normal", "", 0.8), ("pos", "fast", "", 0.7),
-        ("pos", "slow", "", 0.1),
-        ("neg", "normal", "not-similar", 0.0), ("neg", "normal", "similar", 0.2),
-    ]) + clip_rows("bad", [
-        ("pos", "normal", "", 0.4), ("pos", "normal", "", 0.6), ("pos", "fast", "", 0.1),
-        ("pos", "slow", "", 0.1),
-        ("neg", "normal", "not-similar", 0.0), ("neg", "normal", "similar", 0.9),
-    ])
+    rows = clip_rows(
+        "good",
+        [
+            ("pos", "normal", "", 0.9),
+            ("pos", "normal", "", 0.8),
+            ("pos", "fast", "", 0.7),
+            ("pos", "slow", "", 0.1),
+            ("neg", "normal", "not-similar", 0.0),
+            ("neg", "normal", "similar", 0.2),
+        ],
+    ) + clip_rows(
+        "bad",
+        [
+            ("pos", "normal", "", 0.4),
+            ("pos", "normal", "", 0.6),
+            ("pos", "fast", "", 0.1),
+            ("pos", "slow", "", 0.1),
+            ("neg", "normal", "not-similar", 0.0),
+            ("neg", "normal", "similar", 0.9),
+        ],
+    )
     s = compare.summarize(pd.DataFrame(rows))
     assert list(s.index) == ["good", "bad"]
     assert s.loc["good", "eer_normal"] == 0.0
@@ -38,11 +53,15 @@ def test_summarize_per_model():
 
 
 def test_apply_labels_excludes_and_relabels():
-    scores = pd.DataFrame({
-        "file": ["help.wav", "wakie_wake.wav", "jacky.wav"],
-        "kind": ["pos", "neg", "neg"], "pace": ["normal"] * 3,
-        "similarity": ["", "similar", "very-similar"], "max_score": [0.1, 0.9, 0.9],
-    })
+    scores = pd.DataFrame(
+        {
+            "file": ["help.wav", "wakie_wake.wav", "jacky.wav"],
+            "kind": ["pos", "neg", "neg"],
+            "pace": ["normal"] * 3,
+            "similarity": ["", "similar", "very-similar"],
+            "max_score": [0.1, 0.9, 0.9],
+        }
+    )
     df = compare.apply_labels(scores, exclude={"help.wav"}, as_positive={"wakie_wake.wav"})
     assert list(df.file) == ["wakie_wake.wav", "jacky.wav"]
     assert list(df.kind) == ["pos", "neg"]
@@ -72,10 +91,28 @@ def test_check_leakage(tmp_path):
 
 def test_general_summary_weights_speakers_equally():
     def rows(speaker, model, pos_scores, neg_scores):
-        return [{"speaker": speaker, "model": model, "kind": "pos", "pace": "normal", "similarity": "",
-                 "max_score": v} for v in pos_scores] + \
-               [{"speaker": speaker, "model": model, "kind": "neg", "pace": "normal",
-                 "similarity": "similar", "max_score": v} for v in neg_scores]
+        return [
+            {
+                "speaker": speaker,
+                "model": model,
+                "kind": "pos",
+                "pace": "normal",
+                "similarity": "",
+                "max_score": v,
+            }
+            for v in pos_scores
+        ] + [
+            {
+                "speaker": speaker,
+                "model": model,
+                "kind": "neg",
+                "pace": "normal",
+                "similarity": "similar",
+                "max_score": v,
+            }
+            for v in neg_scores
+        ]
+
     scores = pd.DataFrame(
         rows("me", "m", [0.9] * 4, [0.1] * 4)
         + rows("sam", "m", [0.9] * 20, [0.1] * 20)  # many clips, perfect

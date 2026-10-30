@@ -34,8 +34,9 @@ def eer(pos_scores: np.ndarray, neg_scores: np.ndarray) -> tuple[float, float]:
     return float(THRESHOLDS[i]), float((frr[i] + far[i]) / 2)
 
 
-def apply_labels(scores: pd.DataFrame, exclude: set[str] = frozenset(),
-                 as_positive: set[str] = frozenset()) -> pd.DataFrame:
+def apply_labels(
+    scores: pd.DataFrame, exclude: set[str] = frozenset(), as_positive: set[str] = frozenset()
+) -> pd.DataFrame:
     """Leave out clips that don't fit the comparison, and relabel clips that really are wake phrases.
 
     exclude:     e.g. clips saying a phrase some model wasn't trained on ("jarvie, I need some help")
@@ -55,7 +56,9 @@ def score_models(model_paths: list[Path], audio_dir: Path) -> pd.DataFrame:
     frames = []
     for path in model_paths:
         session, name, window = wakeword.load_model(path)
-        scored = gating.add_labels(wakeword.score_all(session, audio_dir, name, window, 1, featurize))
+        scored = gating.add_labels(
+            wakeword.score_all(session, audio_dir, name, window, 1, featurize)
+        )
         scored.insert(0, "model", path.stem)
         frames.append(scored.drop(columns="frame_scores"))
     return pd.concat(frames, ignore_index=True)
@@ -85,7 +88,9 @@ def summarize(scores: pd.DataFrame) -> pd.DataFrame:
 def counts(scores: pd.DataFrame) -> pd.Series:
     """How many clips back each number (per model the clips are the same)."""
     first = scores[scores.model == scores.model.iloc[0]]
-    labels = np.where(first.kind == "pos", "pos_" + first.pace, "neg_" + first.pace + "_" + first.similarity)
+    labels = np.where(
+        first.kind == "pos", "pos_" + first.pace, "neg_" + first.pace + "_" + first.similarity
+    )
     return pd.Series(labels).value_counts().sort_index()
 
 
@@ -111,16 +116,25 @@ def check_leakage(test_sets: dict[str, Path], train_root: Path = DATA / "real") 
     """Refuse to evaluate on a recording that is also in a training set (identical file content):
     the model would have heard it during training, and the results would be meaningless."""
     train = {_digest(p) for p in train_root.rglob("*.wav")} if train_root.exists() else set()
-    leaked = [f"{speaker}/{p.name}" for speaker, folder in test_sets.items()
-              for p in sorted(folder.glob("*.wav")) if _digest(p) in train]
+    leaked = [
+        f"{speaker}/{p.name}"
+        for speaker, folder in test_sets.items()
+        for p in sorted(folder.glob("*.wav"))
+        if _digest(p) in train
+    ]
     if leaked:
-        raise ValueError(f"{len(leaked)} test clip(s) also appear in training data under {train_root}: "
-                         + ", ".join(leaked[:10]))
+        raise ValueError(
+            f"{len(leaked)} test clip(s) also appear in training data under {train_root}: "
+            + ", ".join(leaked[:10])
+        )
 
 
 def score_test_sets(model_paths: list[Path], test_sets: dict[str, Path]) -> pd.DataFrame:
     """score_models for every speaker's test folder, with a `speaker` column."""
-    frames = [score_models(model_paths, folder).assign(speaker=speaker) for speaker, folder in test_sets.items()]
+    frames = [
+        score_models(model_paths, folder).assign(speaker=speaker)
+        for speaker, folder in test_sets.items()
+    ]
     return pd.concat(frames, ignore_index=True)
 
 

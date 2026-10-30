@@ -43,8 +43,9 @@ def normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def phrase_pattern(phrases: list[str] = STAGE1_PHRASES,
-                   jarvie_spellings: list[str] = JARVIE_SPELLINGS) -> re.Pattern:
+def phrase_pattern(
+    phrases: list[str] = STAGE1_PHRASES, jarvie_spellings: list[str] = JARVIE_SPELLINGS
+) -> re.Pattern:
     """One regex matching any stage-1 phrase, with any spelling of "jarvie" (and "wakie").
 
     Optional comma/pause between the name and the command is already removed by normalize().
@@ -120,8 +121,12 @@ def add_labels(scored: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def compare_detections(clips: pd.DataFrame, transcripts: dict[str, str], threshold: float,
-                       pattern: re.Pattern | None = None) -> pd.DataFrame:
+def compare_detections(
+    clips: pd.DataFrame,
+    transcripts: dict[str, str],
+    threshold: float,
+    pattern: re.Pattern | None = None,
+) -> pd.DataFrame:
     """Per-clip decisions of both designs.
 
     `clips` needs columns file, kind, pace, similarity, max_score (as built by the eval notebook).
@@ -154,16 +159,28 @@ def accuracy_table(decisions: pd.DataFrame) -> pd.DataFrame:
     for pace in ["all", *sorted(pos.pace.unique())]:
         d = pos if pace == "all" else pos[pos.pace == pace]
         if len(d):
-            rows.append({"group": f"recall, {pace} pace", "n": len(d),
-                         "always_on": d.always_on_fires.mean(), "daemon": d.daemon_fires.mean(),
-                         "daemon_confirmed": d.confirmed_fires.mean()})
+            rows.append(
+                {
+                    "group": f"recall, {pace} pace",
+                    "n": len(d),
+                    "always_on": d.always_on_fires.mean(),
+                    "daemon": d.daemon_fires.mean(),
+                    "daemon_confirmed": d.confirmed_fires.mean(),
+                }
+            )
     neg = decisions[decisions.kind == "neg"]
     for tier in ["all", *sorted(neg.similarity.unique())]:
         d = neg if tier == "all" else neg[neg.similarity == tier]
         if len(d):
-            rows.append({"group": f"false triggers, {tier}", "n": len(d),
-                         "always_on": d.always_on_fires.mean(), "daemon": d.daemon_fires.mean(),
-                         "daemon_confirmed": d.confirmed_fires.mean()})
+            rows.append(
+                {
+                    "group": f"false triggers, {tier}",
+                    "n": len(d),
+                    "always_on": d.always_on_fires.mean(),
+                    "daemon": d.daemon_fires.mean(),
+                    "daemon_confirmed": d.confirmed_fires.mean(),
+                }
+            )
     table = pd.DataFrame(rows).set_index("group")
     table["daemon - always_on"] = table.daemon - table.always_on
     return table
@@ -172,8 +189,18 @@ def accuracy_table(decisions: pd.DataFrame) -> pd.DataFrame:
 def disagreements(decisions: pd.DataFrame) -> pd.DataFrame:
     """Clips where exactly one design fires: the ones worth listening to."""
     d = decisions[decisions.always_on_fires != decisions.daemon_fires]
-    return d[["file", "kind", "pace", "similarity", "max_score", "always_on_fires",
-              "daemon_fires", "transcript"]].sort_values(["kind", "file"])
+    return d[
+        [
+            "file",
+            "kind",
+            "pace",
+            "similarity",
+            "max_score",
+            "always_on_fires",
+            "daemon_fires",
+            "transcript",
+        ]
+    ].sort_values(["kind", "file"])
 
 
 # --- Token usage from bot logs -------------------------------------------------------------------
@@ -185,8 +212,10 @@ _USAGE_LINE = re.compile(r"prompt tokens: (\d+), completion tokens: (\d+)")
 
 def parse_token_usage(log_text: str) -> pd.DataFrame:
     """Prompt/completion tokens per LLM call found in a bot log (`uv run bot.py 2>&1 | tee bot.log`)."""
-    rows = [{"prompt_tokens": int(p), "completion_tokens": int(c)}
-            for p, c in _USAGE_LINE.findall(log_text)]
+    rows = [
+        {"prompt_tokens": int(p), "completion_tokens": int(c)}
+        for p, c in _USAGE_LINE.findall(log_text)
+    ]
     return pd.DataFrame(rows, columns=["prompt_tokens", "completion_tokens"])
 
 
@@ -206,7 +235,9 @@ class Assumptions:
     greeting_prompt_tokens: float = 1800
     greeting_completion_tokens: float = 60
     calls_per_activation: float = 3  # your turns plus tool-call round trips
-    prompt_tokens_per_call: float = 2200  # system prompt + ~1.5k tokens of tool definitions + history
+    prompt_tokens_per_call: float = (
+        2200  # system prompt + ~1.5k tokens of tool definitions + history
+    )
     completion_tokens_per_call: float = 60
 
     # False activations per hour of listening. Unknown until there are hours of background audio;
@@ -255,9 +286,11 @@ def daily_costs(a: Assumptions) -> pd.DataFrame:
     ao_false = a.always_on_false_per_hour * a.listening_hours_per_day
     ao = {
         "stt_minutes": a.listening_hours_per_day * 60,
-        "prompt_tokens": a.greeting_prompt_tokens + a.activations_per_day * convo_prompt
+        "prompt_tokens": a.greeting_prompt_tokens
+        + a.activations_per_day * convo_prompt
         + ao_false * a.prompt_tokens_per_call,
-        "completion_tokens": a.greeting_completion_tokens + a.activations_per_day * convo_completion
+        "completion_tokens": a.greeting_completion_tokens
+        + a.activations_per_day * convo_completion
         + ao_false * a.completion_tokens_per_call,
         "false_activations": ao_false,
         "attempts_per_activation": 1 / a.always_on_recall if a.always_on_recall else float("inf"),
@@ -284,8 +317,10 @@ def daily_costs(a: Assumptions) -> pd.DataFrame:
     rejected = d_false - passed
     confirm_min = a.confirm_seconds / 60
     cf = {
-        "stt_minutes": a.activations_per_day * (confirm_min + a.conversation_minutes + a.idle_timeout_minutes)
-        + passed * (confirm_min + a.idle_timeout_minutes) + rejected * confirm_min,
+        "stt_minutes": a.activations_per_day
+        * (confirm_min + a.conversation_minutes + a.idle_timeout_minutes)
+        + passed * (confirm_min + a.idle_timeout_minutes)
+        + rejected * confirm_min,
         "prompt_tokens": (a.activations_per_day + passed) * a.greeting_prompt_tokens
         + a.activations_per_day * convo_prompt,
         "completion_tokens": (a.activations_per_day + passed) * a.greeting_completion_tokens
@@ -315,7 +350,9 @@ def savings(a: Assumptions, design: str = "daemon") -> dict[str, float]:
     }
 
 
-def sweep_false_activations(a: Assumptions, values: list[float], design: str = "daemon") -> pd.DataFrame:
+def sweep_false_activations(
+    a: Assumptions, values: list[float], design: str = "daemon"
+) -> pd.DataFrame:
     """How the comparison changes with the daemon's (unknown) false activations per hour."""
     rows = []
     for v in values:

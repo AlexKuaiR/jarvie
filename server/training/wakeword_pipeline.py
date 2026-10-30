@@ -46,7 +46,12 @@ from typing import Any
 CGROUP_V2_CPU_MAX = Path("/sys/fs/cgroup/cpu.max")
 CGROUP_V1_QUOTA = Path("/sys/fs/cgroup/cpu/cpu.cfs_quota_us")
 CGROUP_V1_PERIOD = Path("/sys/fs/cgroup/cpu/cpu.cfs_period_us")
-THREAD_ENV_VARS = ["OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"]
+THREAD_ENV_VARS = [
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+]
 
 
 def available_cpus() -> int:
@@ -97,12 +102,21 @@ try:  # imported as training.wakeword_pipeline (tests) or as a plain module next
 except ImportError:
     import real_data  # type: ignore[no-redef]
 
-SPLITS = ["positive_train", "positive_test", "negative_train", "negative_test",
-          "background_train", "background_test"]
+SPLITS = [
+    "positive_train",
+    "positive_test",
+    "negative_train",
+    "negative_test",
+    "background_train",
+    "background_test",
+]
 FEATURE_FILES = [
-    "positive_features_train.npy", "positive_features_test.npy",
-    "negative_features_train.npy", "negative_features_test.npy",
-    "background_noise_features_train.npy", "background_noise_features_test.npy",
+    "positive_features_train.npy",
+    "positive_features_test.npy",
+    "negative_features_train.npy",
+    "negative_features_test.npy",
+    "background_noise_features_train.npy",
+    "background_noise_features_test.npy",
 ]
 CLEAN_CLIP = re.compile(r"^clip_\d{6}\.wav$")
 AUGMENTED_CLIP = re.compile(r"^clip_\d{6}_r\d+\.wav$")
@@ -122,8 +136,17 @@ DEFAULT_AUGMENTATIONS: dict[str, dict[str, Any]] = {
 
 # Settings that change what speech synthesis produces (anything else in `generation` is ignored
 # for the cache key, e.g. tts_batch_size only changes speed).
-_GEN_KEYS = ["n_samples", "n_samples_val", "n_background_samples", "n_background_samples_val",
-             "length_scales", "noise_scales", "noise_scale_ws", "slerp_weights", "max_speakers"]
+_GEN_KEYS = [
+    "n_samples",
+    "n_samples_val",
+    "n_background_samples",
+    "n_background_samples_val",
+    "length_scales",
+    "noise_scales",
+    "noise_scale_ws",
+    "slerp_weights",
+    "max_speakers",
+]
 
 
 def settings_key(settings: Any) -> str:
@@ -155,18 +178,26 @@ def _load_livekit() -> SimpleNamespace:
     sess_options.intra_op_num_threads = min(cpus, 8)
     sess_options.inter_op_num_threads = 1
     torch.set_num_threads(cpus)
-    print(f"threads: {cpus} CPUs available; onnxruntime {sess_options.intra_op_num_threads}, torch {cpus}")
+    print(
+        f"threads: {cpus} CPUs available; onnxruntime {sess_options.intra_op_num_threads}, torch {cpus}"
+    )
     return SimpleNamespace(
-        WakeWordConfig=WakeWordConfig, run_generate=run_generate, run_augment=run_augment,
-        run_extraction=lambda cfg: run_extraction(cfg, sess_options), run_train=run_train,
-        run_export=run_export, run_eval=run_eval, augment_module=augment_module,
+        WakeWordConfig=WakeWordConfig,
+        run_generate=run_generate,
+        run_augment=run_augment,
+        run_extraction=lambda cfg: run_extraction(cfg, sess_options),
+        run_train=run_train,
+        run_export=run_export,
+        run_eval=run_eval,
+        augment_module=augment_module,
         WakeWordTrainer=WakeWordTrainer,
         load_weights=lambda path: torch.load(path, map_location="cpu"),
     )
 
 
-def _link_files(src_dir: Path, dst_dir: Path, pattern: re.Pattern | None = None,
-                names: list[str] | None = None) -> int:
+def _link_files(
+    src_dir: Path, dst_dir: Path, pattern: re.Pattern | None = None, names: list[str] | None = None
+) -> int:
     """Hard-link (or copy, if links aren't supported) files from src_dir into dst_dir.
 
     Hard links make a second folder that shares the same disk blocks, so reusing a stage's
@@ -276,9 +307,14 @@ class Pipeline:
     generation: dict[str, Any]
     training: dict[str, Any]
     augmentations: dict[str, dict[str, Any]] = field(
-        default_factory=lambda: json.loads(json.dumps(DEFAULT_AUGMENTATIONS)))
-    keep_augmented_audio: int = 20  # augmented WAVs kept per split for listening; the rest are deleted
-    shared_data: Path | None = None  # use another pipeline's downloaded data (e.g. for a smoke test)
+        default_factory=lambda: json.loads(json.dumps(DEFAULT_AUGMENTATIONS))
+    )
+    keep_augmented_audio: int = (
+        20  # augmented WAVs kept per split for listening; the rest are deleted
+    )
+    shared_data: Path | None = (
+        None  # use another pipeline's downloaded data (e.g. for a smoke test)
+    )
     livekit: SimpleNamespace | None = None  # injected in tests; loaded lazily otherwise
 
     def __post_init__(self) -> None:
@@ -304,9 +340,12 @@ class Pipeline:
         for name in names:
             d = self.data_dir / "backgrounds" if name == "musan" else self.root / "noise" / name
             if not any(d.rglob("*.wav")):
-                hint = ("run setup_data()" if name == "musan"
-                        else f"upload recordings to {self.root / 'noise/uploads' / name} "
-                             f"and run prepare_noise({name!r})")
+                hint = (
+                    "run setup_data()"
+                    if name == "musan"
+                    else f"upload recordings to {self.root / 'noise/uploads' / name} "
+                    f"and run prepare_noise({name!r})"
+                )
                 raise RuntimeError(f"no background audio in {d}: {hint}")
             dirs.append(str(d))
         return dirs
@@ -335,7 +374,9 @@ class Pipeline:
         src, dst = self.root / "noise" / "uploads" / name, self.root / "noise" / name
         files = sorted(p for p in src.rglob("*") if p.suffix.lower() in AUDIO_SUFFIXES)
         if not files:
-            raise RuntimeError(f"no recordings in {src} (any of: {', '.join(sorted(AUDIO_SUFFIXES))})")
+            raise RuntimeError(
+                f"no recordings in {src} (any of: {', '.join(sorted(AUDIO_SUFFIXES))})"
+            )
         dst.mkdir(parents=True, exist_ok=True)
         total_s, converted = 0.0, 0
         for f in files:
@@ -347,8 +388,10 @@ class Pipeline:
             sf.write(str(out), y, 16000, subtype="FLOAT")
             total_s += len(y) / 16000
             converted += 1
-        print(f"noise {name!r}: {len(files)} file(s), {converted} newly converted, "
-              f"{total_s / 60:.1f} min -> {dst}")
+        print(
+            f"noise {name!r}: {len(files)} file(s), {converted} newly converted, "
+            f"{total_s / 60:.1f} min -> {dst}"
+        )
         return total_s / 60
 
     def real_clips(self, name: str) -> list:
@@ -356,21 +399,31 @@ class Pipeline:
         uploads = self.root / "real" / "uploads" / name
         clips = real_data.collect(uploads)
         if not clips:
-            raise RuntimeError(f"no recordings in {uploads}/<speaker>/<wake|sleep>/ "
-                               "(upload ~/jarvie-data/real/<name>/ from the Mac here)")
+            raise RuntimeError(
+                f"no recordings in {uploads}/<speaker>/<wake|sleep>/ "
+                "(upload ~/jarvie-data/real/<name>/ from the Mac here)"
+            )
         return clips
 
     def prepare_real(self, name: str = "v1") -> dict:
         """Check the uploaded recordings and print what's there, per speaker and label."""
         counts = real_data.summary(self.real_clips(name))
         for speaker, c in counts.items():
-            print(f"real {name!r}, speaker {speaker}: " + ", ".join(f"{k} {v}" for k, v in sorted(c.items())))
+            print(
+                f"real {name!r}, speaker {speaker}: "
+                + ", ".join(f"{k} {v}" for k, v in sorted(c.items()))
+            )
         return counts
 
     # --- stages -----------------------------------------------------------
 
-    def _config(self, model: str, output_dir: Path, augmentation: dict | None = None,
-                training: dict | None = None):
+    def _config(
+        self,
+        model: str,
+        output_dir: Path,
+        augmentation: dict | None = None,
+        training: dict | None = None,
+    ):
         return self.lk.WakeWordConfig(
             model_name=model,
             target_phrases=self.phrases[model],
@@ -392,13 +445,19 @@ class Pipeline:
 
     @staticmethod
     def _finish(stage_dir: Path, started: float, extra: dict | None = None) -> None:
-        info = {"finished": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "minutes": round((time.time() - started) / 60, 1), **(extra or {})}
+        info = {
+            "finished": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "minutes": round((time.time() - started) / 60, 1),
+            **(extra or {}),
+        }
         (stage_dir / "_done.json").write_text(json.dumps(info, indent=2, default=str))
 
     def generate(self, model: str) -> tuple[Path, str]:
-        settings = {"phrases": self.phrases[model], "negatives": self.negatives.get(model, []),
-                    **{k: self.generation[k] for k in _GEN_KEYS if k in self.generation}}
+        settings = {
+            "phrases": self.phrases[model],
+            "negatives": self.negatives.get(model, []),
+            **{k: self.generation[k] for k in _GEN_KEYS if k in self.generation},
+        }
         stage_dir, _, done = self._stage("gen", model, settings)
         key = settings_key(settings)
         if done:
@@ -423,14 +482,25 @@ class Pipeline:
                 out[name] = settings_key([(f.name, f.stat().st_size) for f in files])
         return out
 
-    def augment(self, model: str, variant: str, gen_dir: Path, gen_key: str,
-                data: dict | None = None, label: str | None = None) -> tuple[Path, str]:
+    def augment(
+        self,
+        model: str,
+        variant: str,
+        gen_dir: Path,
+        gen_key: str,
+        data: dict | None = None,
+        label: str | None = None,
+    ) -> tuple[Path, str]:
         """Augmentation + features. `data` (only set when it differs from the default of "all
         synthetic, no real recordings") chooses the training clips; see run()."""
         spec = self.augmentations[variant]
         label = label or variant
-        settings = {"gen": gen_key, "variant": variant, **spec,
-                    "noise": self._noise_fingerprint(spec["backgrounds"])}
+        settings = {
+            "gen": gen_key,
+            "variant": variant,
+            **spec,
+            "noise": self._noise_fingerprint(spec["backgrounds"]),
+        }
         real_clips: list = []
         if data:
             if data.get("real"):
@@ -446,15 +516,21 @@ class Pipeline:
         started = time.time()
         for split in SPLITS:
             if data and split in ("positive_train", "negative_train"):
-                self._link_synthetic_share(gen_dir / model / split, model_dir / split,
-                                           data.get("synthetic_share", 1.0), seed=key)
+                self._link_synthetic_share(
+                    gen_dir / model / split,
+                    model_dir / split,
+                    data.get("synthetic_share", 1.0),
+                    seed=key,
+                )
             else:  # test and background splits always stay synthetic (livekit's validation)
                 _link_files(gen_dir / model / split, model_dir / split, pattern=CLEAN_CLIP)
         if real_clips:
             self._add_real_copies(model, model_dir, real_clips, data, seed=key)
-        augmentation = {"rounds": spec["rounds"],
-                        "background_paths": self._background_dirs(spec["backgrounds"]),
-                        "rir_paths": [str(self.data_dir / "rirs")]}
+        augmentation = {
+            "rounds": spec["rounds"],
+            "background_paths": self._background_dirs(spec["backgrounds"]),
+            "rir_paths": [str(self.data_dir / "rirs")],
+        }
         cfg = self._config(model, stage_dir, augmentation=augmentation)
         # Augmentation and feature extraction can each take hours, and the stage's _done marker
         # is only written after both. Record augmentation separately, so a stopped pod or an
@@ -462,11 +538,15 @@ class Pipeline:
         augmented_marker = stage_dir / "_augmented.json"
         with _releasing_gpu(f"aug {model} [{label}]"):
             if augmented_marker.exists() or self._augmentation_complete(model_dir, spec["rounds"]):
-                print(f"  aug   {model} [{label}]: augmentation already complete, extracting features")
+                print(
+                    f"  aug   {model} [{label}]: augmentation already complete, extracting features"
+                )
             else:
                 with _augmentation_patch(self.lk.augment_module, spec.get("patch")):
                     self.lk.run_augment(cfg)
-            augmented_marker.write_text(json.dumps({"finished": time.strftime("%Y-%m-%d %H:%M:%S")}))
+            augmented_marker.write_text(
+                json.dumps({"finished": time.strftime("%Y-%m-%d %H:%M:%S")})
+            )
             self.lk.run_extraction(cfg)
         self._prune_augmented_audio(model_dir)
         self._finish(stage_dir, started)
@@ -484,20 +564,30 @@ class Pipeline:
             names = sorted(rng.sample(names, max(1, round(len(names) * share))))
         _link_files(src, dst, names=names)
 
-    def _add_real_copies(self, model: str, model_dir: Path, clips: list, data: dict, seed: str) -> None:
+    def _add_real_copies(
+        self, model: str, model_dir: Path, clips: list, data: dict, seed: str
+    ) -> None:
         """Trim your recordings to the training format and write `repeat` copies of each into the
         training folders (each copy is then augmented differently)."""
         mode = model.rsplit("_", 1)[-1]  # jarvie_wake -> wake, jarvie_sleep -> sleep
         positives, negatives = real_data.training_roles(clips, mode)
         repeat, speaker_aug = data.get("repeat", 20), data.get("speaker_aug", True)
-        end_pos, silent_pos = real_data.write_copies(positives, "pos", model_dir / "positive_train",
-                                                     repeat, speaker_aug, seed)
-        end_neg, silent_neg = real_data.write_copies(negatives, "neg", model_dir / "negative_train",
-                                                     repeat, speaker_aug, seed)
+        end_pos, silent_pos = real_data.write_copies(
+            positives, "pos", model_dir / "positive_train", repeat, speaker_aug, seed
+        )
+        end_neg, silent_neg = real_data.write_copies(
+            negatives, "neg", model_dir / "negative_train", repeat, speaker_aug, seed
+        )
         start = real_data.REAL_INDEX_START
-        print(f"  real  {model}: {len(positives)} positive and {len(negatives)} negative recordings -> "
-              f"{end_pos - start} + {end_neg - start} training clips"
-              + (f" ({silent_pos + silent_neg} without detectable speech skipped)" if silent_pos + silent_neg else ""))
+        print(
+            f"  real  {model}: {len(positives)} positive and {len(negatives)} negative recordings -> "
+            f"{end_pos - start} + {end_neg - start} training clips"
+            + (
+                f" ({silent_pos + silent_neg} without detectable speech skipped)"
+                if silent_pos + silent_neg
+                else ""
+            )
+        )
 
     @staticmethod
     def _augmentation_complete(model_dir: Path, rounds: int) -> bool:
@@ -523,8 +613,10 @@ class Pipeline:
     def _prune_augmented_audio(self, model_dir: Path) -> None:
         """Training only reads the extracted features, so most augmented WAVs can go."""
         for split in SPLITS:
-            clips = sorted(p for p in (model_dir / split).glob("*.wav") if AUGMENTED_CLIP.match(p.name))
-            for p in clips[self.keep_augmented_audio:]:
+            clips = sorted(
+                p for p in (model_dir / split).glob("*.wav") if AUGMENTED_CLIP.match(p.name)
+            )
+            for p in clips[self.keep_augmented_audio :]:
                 p.unlink()
 
     def _trained_weights(self, model: str, label: str, trial: str) -> Path:
@@ -535,8 +627,10 @@ class Pipeline:
             if info.get("variant") == label and info.get("trial") == trial:
                 matches.append((info.get("finished", ""), done.parent / model / f"{model}.pt"))
         if not matches:
-            raise RuntimeError(f"no finished training run for {model} [{label}/{trial}] to start from; "
-                               f"run pipe.run({label!r}, trial={trial!r}) first")
+            raise RuntimeError(
+                f"no finished training run for {model} [{label}/{trial}] to start from; "
+                f"run pipe.run({label!r}, trial={trial!r}) first"
+            )
         return max(matches)[1]
 
     def _warm_start_train(self, cfg, init_weights: Path, model_dir: Path, model: str) -> None:
@@ -549,13 +643,24 @@ class Pipeline:
         try:
             trainer.model.load_state_dict(self.lk.load_weights(init_weights))
         except RuntimeError as e:  # different model_type / model_size
-            raise RuntimeError(f"can't start from {init_weights}: it has a different architecture "
-                               f"(keep model settings identical when fine-tuning). {e}") from e
+            raise RuntimeError(
+                f"can't start from {init_weights}: it has a different architecture "
+                f"(keep model settings identical when fine-tuning). {e}"
+            ) from e
         trainer.train()
         trainer.save(model_dir / f"{model}.pt")
 
-    def train(self, model: str, variant: str, trial: str, aug_dir: Path, aug_key: str,
-              training: dict, label: str | None = None, init_from: tuple[str, str] | None = None) -> dict:
+    def train(
+        self,
+        model: str,
+        variant: str,
+        trial: str,
+        aug_dir: Path,
+        aug_key: str,
+        training: dict,
+        label: str | None = None,
+        init_from: tuple[str, str] | None = None,
+    ) -> dict:
         label = label or variant
         settings = {"aug": aug_key, **training}
         init_weights = None
@@ -566,8 +671,10 @@ class Pipeline:
         if done:
             print(f"  train {model} [{label}/{trial}]: cached ({stage_dir.name})")
             return json.loads((stage_dir / "_done.json").read_text())
-        print(f"  train {model} [{label}/{trial}]: running ({stage_dir.name})"
-              + (f", starting from {init_from[0]}/{init_from[1]}" if init_from else ""))
+        print(
+            f"  train {model} [{label}/{trial}]: running ({stage_dir.name})"
+            + (f", starting from {init_from[0]}/{init_from[1]}" if init_from else "")
+        )
         started = time.time()
         _link_files(aug_dir / model, model_dir, names=FEATURE_FILES)
         cfg = self._config(model, stage_dir, training=training)
@@ -582,18 +689,33 @@ class Pipeline:
             metrics = self.lk.run_eval(cfg, onnx_path)
         exported = self.root / "models" / f"{model}__{label}__{trial}.onnx"
         shutil.copy2(onnx_path, exported)
-        result = {"model": model, "variant": label, "trial": trial, "onnx": str(exported),
-                  **{k: v for k, v in metrics.items() if isinstance(v, (int, float))}}
+        result = {
+            "model": model,
+            "variant": label,
+            "trial": trial,
+            "onnx": str(exported),
+            **{k: v for k, v in metrics.items() if isinstance(v, (int, float))},
+        }
         self._finish(stage_dir, started, result)
         self._append_result(result, training)
         return result
 
     # --- entry points -----------------------------------------------------
 
-    def run(self, variant: str, trial: str = "base", models: list[str] | None = None, *,
-            real: str | None = None, real_repeat: int = 20, speaker_aug: bool = True,
-            synthetic: bool = True, synthetic_share: float | None = None,
-            init_from: tuple[str, str] | None = None, **training_overrides: Any) -> list[dict]:
+    def run(
+        self,
+        variant: str,
+        trial: str = "base",
+        models: list[str] | None = None,
+        *,
+        real: str | None = None,
+        real_repeat: int = 20,
+        speaker_aug: bool = True,
+        synthetic: bool = True,
+        synthetic_share: float | None = None,
+        init_from: tuple[str, str] | None = None,
+        **training_overrides: Any,
+    ) -> list[dict]:
         """Run (or reuse) every stage for one augmentation variant and one training trial.
 
         Training data (each option only reruns augmentation and training; speech is reused):
@@ -639,14 +761,27 @@ class Pipeline:
             print(f"=== {model}: {label}, trial {trial} ===")
             gen_dir, gen_key = self.generate(model)
             aug_dir, aug_key = self.augment(model, variant, gen_dir, gen_key, data or None, label)
-            results.append(self.train(model, variant, trial, aug_dir, aug_key, training,
-                                      label=label, init_from=init_from))
+            results.append(
+                self.train(
+                    model,
+                    variant,
+                    trial,
+                    aug_dir,
+                    aug_key,
+                    training,
+                    label=label,
+                    init_from=init_from,
+                )
+            )
         return results
 
     def _append_result(self, result: dict, training: dict) -> None:
         path = self.root / "results.csv"
-        row = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), **result,
-               "training": json.dumps(training, sort_keys=True, default=str)}
+        row = {
+            "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            **result,
+            "training": json.dumps(training, sort_keys=True, default=str),
+        }
         new = not path.exists()
         with path.open("a", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=list(row), extrasaction="ignore")

@@ -15,9 +15,12 @@ from pathlib import Path
 
 ROOT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("/workspace/wakeword")
 SPLITS = [
-    "positive_train", "positive_test",
-    "negative_train", "negative_test",
-    "background_train", "background_test",
+    "positive_train",
+    "positive_test",
+    "negative_train",
+    "negative_test",
+    "background_train",
+    "background_test",
 ]
 CLEAN = re.compile(r"^clip_\d{6}\.wav$")
 AUGMENTED = re.compile(r"^clip_\d{6}_r\d+\.wav$")

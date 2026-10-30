@@ -6,8 +6,13 @@ from jarvie.eval import gating
 
 @pytest.mark.parametrize(
     "transcript",
-    ["Jarvie, wake up!", "jarvy help me", "Hey Jarvie, wacky wacky.", "ok jarvee wake up now",
-     "Jarvie, I need some help"],
+    [
+        "Jarvie, wake up!",
+        "jarvy help me",
+        "Hey Jarvie, wacky wacky.",
+        "ok jarvee wake up now",
+        "Jarvie, I need some help",
+    ],
 )
 def test_stage1_phrases_detected_with_stt_spellings(transcript):
     assert gating.transcript_detects(transcript)
@@ -15,20 +20,31 @@ def test_stage1_phrases_detected_with_stt_spellings(transcript):
 
 @pytest.mark.parametrize(
     "transcript",
-    ["wake up", "Jarvis.", "Jacky, wake up.", "I need some help", "jarvis what's the weather",
-     "harvey help me", "Jarvis, wake up!", "jarvis help me", ""],
+    [
+        "wake up",
+        "Jarvis.",
+        "Jacky, wake up.",
+        "I need some help",
+        "jarvis what's the weather",
+        "harvey help me",
+        "Jarvis, wake up!",
+        "jarvis help me",
+        "",
+    ],
 )
 def test_other_speech_not_detected(transcript):
     assert not gating.transcript_detects(transcript)
 
 
 def test_add_labels_splits_pace_and_similarity():
-    scored = pd.DataFrame({
-        "file": ["a", "b", "c"],
-        "kind": ["pos", "neg-very-similar", "neg"],
-        "condition": ["loud-fast", "loud-normal", "quiet"],
-        "max_score": [0.9, 0.2, 0.1],
-    })
+    scored = pd.DataFrame(
+        {
+            "file": ["a", "b", "c"],
+            "kind": ["pos", "neg-very-similar", "neg"],
+            "condition": ["loud-fast", "loud-normal", "quiet"],
+            "max_score": [0.9, 0.2, 0.1],
+        }
+    )
     df = gating.add_labels(scored)
     assert list(df.kind) == ["pos", "neg", "neg"]
     assert list(df.pace) == ["fast", "normal", "normal"]
@@ -55,14 +71,21 @@ def test_transcripts_cached_by_content(tmp_path):
 
 
 def test_accuracy_and_disagreements():
-    clips = pd.DataFrame({
-        "file": ["p1", "p2", "n1", "n2"],
-        "kind": ["pos", "pos", "neg", "neg"],
-        "pace": ["normal", "fast", "normal", "normal"],
-        "similarity": ["", "", "similar", "not-similar"],
-        "max_score": [0.9, 0.1, 0.8, 0.0],
-    })
-    transcripts = {"p1": "Jarvie, wake up.", "p2": "Jarvie wake up", "n1": "Jacky wake up", "n2": "hi"}
+    clips = pd.DataFrame(
+        {
+            "file": ["p1", "p2", "n1", "n2"],
+            "kind": ["pos", "pos", "neg", "neg"],
+            "pace": ["normal", "fast", "normal", "normal"],
+            "similarity": ["", "", "similar", "not-similar"],
+            "max_score": [0.9, 0.1, 0.8, 0.0],
+        }
+    )
+    transcripts = {
+        "p1": "Jarvie, wake up.",
+        "p2": "Jarvie wake up",
+        "n1": "Jacky wake up",
+        "n2": "hi",
+    }
     decisions = gating.compare_detections(clips, transcripts, threshold=0.5)
     table = gating.accuracy_table(decisions)
     assert table.loc["recall, all pace", "always_on"] == 1.0
@@ -87,11 +110,21 @@ def test_parse_token_usage_from_pipecat_log():
 
 def test_daily_costs_by_hand():
     a = gating.Assumptions(
-        listening_hours_per_day=10, activations_per_day=2, conversation_minutes=1,
-        idle_timeout_minutes=2, greeting_prompt_tokens=1000, greeting_completion_tokens=0,
-        calls_per_activation=1, prompt_tokens_per_call=1000, completion_tokens_per_call=0,
-        always_on_false_per_hour=0.1, daemon_false_per_hour=0.5, daemon_recall=0.5,
-        stt_per_minute=0.01, llm_input_per_million=1.0, llm_output_per_million=0.0,
+        listening_hours_per_day=10,
+        activations_per_day=2,
+        conversation_minutes=1,
+        idle_timeout_minutes=2,
+        greeting_prompt_tokens=1000,
+        greeting_completion_tokens=0,
+        calls_per_activation=1,
+        prompt_tokens_per_call=1000,
+        completion_tokens_per_call=0,
+        always_on_false_per_hour=0.1,
+        daemon_false_per_hour=0.5,
+        daemon_recall=0.5,
+        stt_per_minute=0.01,
+        llm_input_per_million=1.0,
+        llm_output_per_million=0.0,
     )
     t = gating.daily_costs(a)
     # always-on: 600 STT minutes; 1 greeting + 2 conversations + 1 false wake = 4,000 prompt tokens
@@ -113,44 +146,74 @@ def test_false_activation_sweep_is_monotonic():
 
 
 def test_confirmation_filters_near_misses():
-    clips = pd.DataFrame({
-        "file": ["p1", "p2", "n_jacky", "n_jarvis", "n_quiet"],
-        "kind": ["pos", "pos", "neg", "neg", "neg"],
-        "pace": ["normal"] * 5,
-        "similarity": ["", "", "very-similar", "similar", "not-similar"],
-        "max_score": [0.9, 0.95, 0.97, 0.96, 0.1],
-    })
-    transcripts = {"p1": "Jarvie, wake up.", "p2": "Jarvy help me", "n_jacky": "Jacky, wake up.",
-                   "n_jarvis": "Jarvis, wake up.", "n_quiet": "okay"}
+    clips = pd.DataFrame(
+        {
+            "file": ["p1", "p2", "n_jacky", "n_jarvis", "n_quiet"],
+            "kind": ["pos", "pos", "neg", "neg", "neg"],
+            "pace": ["normal"] * 5,
+            "similarity": ["", "", "very-similar", "similar", "not-similar"],
+            "max_score": [0.9, 0.95, 0.97, 0.96, 0.1],
+        }
+    )
+    transcripts = {
+        "p1": "Jarvie, wake up.",
+        "p2": "Jarvy help me",
+        "n_jacky": "Jacky, wake up.",
+        "n_jarvis": "Jarvis, wake up.",
+        "n_quiet": "okay",
+    }
     decisions = gating.compare_detections(clips, transcripts, threshold=0.5)
     assert list(decisions.confirmed_fires) == [True, True, False, False, False]
     est = gating.estimate_confirmation(decisions)
-    assert est == {"confirm_pass_rate": 0.0, "confirmed_recall": 1.0}  # jacky and jarvis both rejected
+    assert est == {
+        "confirm_pass_rate": 0.0,
+        "confirmed_recall": 1.0,
+    }  # jacky and jarvis both rejected
     table = gating.accuracy_table(decisions)
     assert table.loc["false triggers, very-similar", "daemon_confirmed"] == 0.0
 
 
 def test_confirmation_costs_by_hand():
     a = gating.Assumptions(
-        listening_hours_per_day=10, activations_per_day=2, conversation_minutes=1,
-        idle_timeout_minutes=2, greeting_prompt_tokens=1000, greeting_completion_tokens=0,
-        calls_per_activation=1, prompt_tokens_per_call=1000, completion_tokens_per_call=0,
-        daemon_false_per_hour=0.5, confirm_seconds=6, confirm_pass_rate=0.2, confirmed_recall=0.5,
-        stt_per_minute=0.01, llm_input_per_million=1.0, llm_output_per_million=0.0,
+        listening_hours_per_day=10,
+        activations_per_day=2,
+        conversation_minutes=1,
+        idle_timeout_minutes=2,
+        greeting_prompt_tokens=1000,
+        greeting_completion_tokens=0,
+        calls_per_activation=1,
+        prompt_tokens_per_call=1000,
+        completion_tokens_per_call=0,
+        daemon_false_per_hour=0.5,
+        confirm_seconds=6,
+        confirm_pass_rate=0.2,
+        confirmed_recall=0.5,
+        stt_per_minute=0.01,
+        llm_input_per_million=1.0,
+        llm_output_per_million=0.0,
     )
     row = gating.daily_costs(a).loc["daemon_confirmed"]
     # 5 false starts: 1 passes (confirm + idle), 4 rejected (confirm only); 2 real (confirm + talk + idle)
     assert row.stt_minutes == pytest.approx(2 * (0.1 + 1 + 2) + 1 * (0.1 + 2) + 4 * 0.1)
-    assert row.prompt_tokens == 3 * 1000 + 2 * 1000  # greetings for 2 real + 1 passed, 2 conversations
+    assert (
+        row.prompt_tokens == 3 * 1000 + 2 * 1000
+    )  # greetings for 2 real + 1 passed, 2 conversations
     assert row.false_activations == pytest.approx(1)
-    assert gating.savings(a, "daemon_confirmed")["usd_per_day_saved"] > gating.savings(a)["usd_per_day_saved"]
+    assert (
+        gating.savings(a, "daemon_confirmed")["usd_per_day_saved"]
+        > gating.savings(a)["usd_per_day_saved"]
+    )
 
 
-@pytest.mark.parametrize("transcript", ["Jarvie, are you up?", "hey jarvy are you up", "Jarvie... are you up"])
+@pytest.mark.parametrize(
+    "transcript", ["Jarvie, are you up?", "hey jarvy are you up", "Jarvie... are you up"]
+)
 def test_are_you_up_is_a_stage1_phrase(transcript):
     assert gating.transcript_detects(transcript)
 
 
-@pytest.mark.parametrize("transcript", ["You up?", "Are you up?", "Jarvis, are you up?", "Jacky, are you up?"])
+@pytest.mark.parametrize(
+    "transcript", ["You up?", "Are you up?", "Jarvis, are you up?", "Jacky, are you up?"]
+)
 def test_are_you_up_near_misses_are_not(transcript):
     assert not gating.transcript_detects(transcript)
