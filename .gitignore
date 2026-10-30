@@ -222,5 +222,3 @@ server/scratch/
 server/credentials.json
 server/token.json
 .DS_Store
-# Trained wake-word models while still experimenting; remove this line once the models are final
-server/models/
