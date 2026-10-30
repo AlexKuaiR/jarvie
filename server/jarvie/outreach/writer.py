@@ -27,6 +27,18 @@ class DraftEmail(BaseModel):
     personalization_used: list[Personalization]
 
 
+class EmailSummary(BaseModel):
+    """The plan for one email, written before the email itself and kept with the draft."""
+
+    gist: str = Field(description="One or two sentences: what the email says and asks for")
+    angle: str = Field(description="Why this person: the connection the email leads with")
+    points: list[str] = Field(description="The 2-3 things the email will say, in order")
+    facts_used: list[str] = Field(
+        description="Keys of the stored facts it relies on, or 'resume' for the student"
+    )
+    tone: str = Field(description="e.g. warm and brief, formal for faculty")
+
+
 PURPOSE_ASKS = {
     "coffee_chat": "a 15-minute call or coffee chat about their path and their team",
     "research_inquiry": "whether they're taking undergraduate researchers, and a short meeting",
@@ -48,6 +60,20 @@ You write short, personal cold emails from a student to one person. Rules:
 - Subject under 70 characters, specific, not clickbait.
 List every fact you used in personalization_used (feature_key = the fact's key, or
 "resume" for the student's own background).
+"""
+
+SUMMARY_SYSTEM = """\
+You plan short, personal cold emails from a student to one person, before they are
+written. Read what's known about the person and the student, then decide: the gist (what
+the email says and asks), the angle (the one true connection to lead with), two or three
+points in order, which stored facts it relies on (by key), and the tone. Use only the
+facts given; never plan around anything not stated. Keep it brief: the summary is read
+aloud to the student and is the basis for the email.
+"""
+
+DRAFT_FROM_SUMMARY = """\
+Write the email from this summary. Follow its angle, points and tone; use only facts
+it lists, plus the stored facts above.
 """
 
 
@@ -113,7 +139,7 @@ def check_draft(draft: DraftEmail, contact: dict, sender: Sender) -> list[str]:
     last = contact["name"].split()[-1].lower()
     if first not in draft.body.lower() and last not in draft.body.lower():
         problems.append("doesn't address the person by name")
-    features = contact.get("features") or {}
+    features = facts_of(contact)
     for item in draft.personalization_used:
         if item.feature_key != "resume" and item.feature_key not in features:
             problems.append(f"used a fact that isn't stored: {item.feature_key}")
@@ -124,10 +150,28 @@ def check_draft(draft: DraftEmail, contact: dict, sender: Sender) -> list[str]:
     return problems
 
 
+def facts_of(contact: dict) -> dict:
+    """What the writer may personalize from: stored facts, plus your notes on the person."""
+    facts = dict(contact.get("features") or {})
+    if contact.get("notes"):
+        facts["your_notes"] = contact["notes"]
+    return facts
+
+
+def format_summary(summary: dict) -> str:
+    points = "\n".join(f"  {i}. {pt}" for i, pt in enumerate(summary.get("points") or [], 1))
+    return (
+        f"Gist: {summary.get('gist', '')}\nAngle: {summary.get('angle', '')}\n"
+        f"Points:\n{points}\nFacts used: {', '.join(summary.get('facts_used') or [])}\n"
+        f"Tone: {summary.get('tone', '')}"
+    )
+
+
 def prompt_for(
     contact: dict, purpose: str, notes: str, sender: Sender, posting: dict | None
 ) -> str:
-    facts = "\n".join(f"- {k}: {v}" for k, v in (contact.get("features") or {}).items()) or "- none"
+    """Everything known about the person and the student: the basis for every step."""
+    facts = "\n".join(f"- {k}: {v}" for k, v in facts_of(contact).items()) or "- none"
     lines = [
         f"Recipient: {contact['name']}, {contact.get('role') or 'role unknown'}"
         f"{' at ' + contact['company'] if contact.get('company') else ''}.",
@@ -189,41 +233,133 @@ def draft_outreach(
             targets.append(c)
 
     senders = [load_sender(resume, posting, c) if per_person else sender for c in targets]
-    system = cached_system(SYSTEM)
-    prompts = [
+    contexts = [
         prompt_for(c, purpose, p.get("notes", ""), me, posting) for c, me in zip(targets, senders)
     ]
-    if len(prompts) >= BATCH_THRESHOLD and isinstance(writer, ClaudeWriter):
-        first_pass, usage = write_many(writer, system, prompts, DraftEmail)
-        spend.add(usage)
-    else:
-        first_pass = []
-        for prompt in prompts:
-            try:
-                draft, usage = writer.write(system, prompt, DraftEmail)
-                spend.add(usage)
-                first_pass.append((draft, None))
-            except LLMError as e:
-                first_pass.append((None, str(e)))
-
+    # Two steps: plan each email (the summary you'll read and revise), then write it.
+    summaries = _write_all(writer, SUMMARY_SYSTEM, contexts, EmailSummary, spend)
     drafted, rejected = [], {}
-    for c, me, prompt, (draft, error) in zip(targets, senders, prompts, first_pass):
-        problems = [error] if error else check_draft(draft, c, me)
-        if problems and not error:
-            # One retry, telling the writer exactly what to fix.
-            retry = (
-                f"{prompt}\n\nYour previous draft had these problems; fix them:\n- "
-                + "\n- ".join(problems)
+    ready = []
+    for c, me, context, (summary, error) in zip(targets, senders, contexts, summaries):
+        if error:
+            rejected[c["id"]] = [error]
+        else:
+            ready.append(
+                (
+                    c,
+                    me,
+                    f"{context}\n\n{DRAFT_FROM_SUMMARY}\n{format_summary(summary.model_dump())}",
+                    summary,
+                )
             )
-            draft, usage = writer.write(system, retry, DraftEmail)
-            spend.add(usage)
-            problems = check_draft(draft, c, me)
+    first_pass = _write_all(writer, SYSTEM, [r[2] for r in ready], DraftEmail, spend)
+    for (c, me, prompt, summary), (draft, error) in zip(ready, first_pass):
+        draft, problems = _checked(writer, prompt, draft, error, c, me, spend)
         if problems:
             rejected[c["id"]] = problems
             continue
         drafted.append(
             messages.add_draft(
-                c["id"], draft.subject, draft.body, purpose, posting and posting["id"]
+                c["id"],
+                draft.subject,
+                draft.body,
+                purpose,
+                posting and posting["id"],
+                summary=summary.model_dump(),
+                resume=resume,
             )
         )
     return {"drafted": drafted, "rejected": rejected, "skipped": skipped}
+
+
+def _write_all(
+    writer: WriterModel, system: str, prompts: list[str], schema, spend: Usage
+) -> list[tuple]:
+    """One (result, error) per prompt; many at once go through the half-price batch API."""
+    if len(prompts) >= BATCH_THRESHOLD and isinstance(writer, ClaudeWriter):
+        out, usage = write_many(writer, cached_system(system), prompts, schema)
+        spend.add(usage)
+        return out
+    out = []
+    for prompt in prompts:
+        try:
+            result, usage = writer.write(cached_system(system), prompt, schema)
+            spend.add(usage)
+            out.append((result, None))
+        except LLMError as e:
+            out.append((None, str(e)))
+    return out
+
+
+def _checked(writer, prompt, draft, error, contact, sender, spend) -> tuple:
+    """The grounding check, with one retry that says exactly what to fix."""
+    if error:
+        return None, [error]
+    problems = check_draft(draft, contact, sender)
+    if problems:
+        retry = f"{prompt}\n\nYour previous draft had these problems; fix them:\n- " + "\n- ".join(
+            problems
+        )
+        draft, usage = writer.write(cached_system(SYSTEM), retry, DraftEmail)
+        spend.add(usage)
+        problems = check_draft(draft, contact, sender)
+    return draft, problems
+
+
+REVISE_SUMMARY = """\
+The student wants this email changed. Here is the current summary and the current text
+(which may include the student's own edits; keep those unless asked otherwise):
+
+{summary}
+
+Subject: {subject}
+{body}
+
+The student asks: {instruction}
+
+Write the updated summary: change what they asked for and keep the rest.
+"""
+
+
+def revise_outreach(job: dict, writer: WriterModel, spend: Usage) -> dict:
+    """Rewrite one draft with you: update its summary from your request, then the email.
+
+    The grounding check still applies, so a request to mention something not stored
+    about the person is refused (save it with add_contact_fact first). A rejected
+    rewrite leaves the draft as it was.
+    """
+    p = job["params"]
+    instruction = (p.get("instruction") or "").strip()
+    if not instruction:
+        raise ValueError("say what to change")
+    m = messages.get(int(p["outreach_id"]))
+    if m is None or m["status"] != "drafted":
+        raise ValueError("only drafts can be rewritten")
+    contact = contacts.get(m["contact_id"])
+    posting = None
+    if m["posting_id"]:
+        from ..career import postings
+
+        posting = postings.get(m["posting_id"])
+    me = load_sender(m["resume"] or None, posting, contact)
+    context = prompt_for(contact, m["purpose"], "", me, posting)
+    summary_text = format_summary(m["summary"]) if m["summary"] else "(none yet)"
+    ask = REVISE_SUMMARY.format(
+        summary=summary_text, subject=m["subject"], body=m["body"], instruction=instruction
+    )
+    [(summary, error)] = _write_all(
+        writer, SUMMARY_SYSTEM, [f"{context}\n\n{ask}"], EmailSummary, spend
+    )
+    if error:
+        raise LLMError(error)
+    prompt = (
+        f"{context}\n\nThe student's current version, to rework (keep their edits unless "
+        f"the summary changes them):\nSubject: {m['subject']}\n{m['body']}\n\n"
+        f"{DRAFT_FROM_SUMMARY}\n{format_summary(summary.model_dump())}"
+    )
+    [(draft, error)] = _write_all(writer, SYSTEM, [prompt], DraftEmail, spend)
+    draft, problems = _checked(writer, prompt, draft, error, contact, me, spend)
+    if problems:
+        return {"revised": False, "outreach_id": m["id"], "problems": problems}
+    messages.revise(m["id"], draft.subject, draft.body, summary.model_dump(), instruction)
+    return {"revised": True, "outreach_id": m["id"], "summary": summary.model_dump()}

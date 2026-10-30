@@ -36,14 +36,32 @@ class FakeAgent:
 
 
 class FakeWriter:
-    def __init__(self, make, cost: float = 0.01):
+    """make(prompt, schema) writes the emails. The summary step before each email is
+    answered by summarize(prompt) (default: SUMMARY) and recorded in summary_calls, so
+    `calls` holds only the email-writing prompts."""
+
+    def __init__(self, make, cost: float = 0.01, summarize=None):
         self.make = make  # (prompt, schema) -> schema instance
         self.cost = cost
+        self.summarize = summarize or (lambda prompt: SUMMARY)
         self.calls: list[str] = []
+        self.summary_calls: list[str] = []
 
     def write(self, system, prompt, schema):
+        if schema.__name__ == "EmailSummary":
+            self.summary_calls.append(prompt)
+            return schema(**self.summarize(prompt)), Usage(300, 100, cost_usd=self.cost)
         self.calls.append(prompt)
         return self.make(prompt, schema), Usage(500, 200, cost_usd=self.cost)
+
+
+SUMMARY = {
+    "gist": "Ask for a 15-minute coffee chat about their team.",
+    "angle": "Fellow Berkeley alum",
+    "points": ["who the student is", "why their team", "the ask"],
+    "facts_used": ["school", "resume"],
+    "tone": "warm and brief",
+}
 
 
 def mock_anthropic(responses: list[dict], seen: list | None = None) -> anthropic.Anthropic:

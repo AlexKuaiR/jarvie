@@ -61,7 +61,8 @@ async def add_contact(
     """Save someone the user names themselves, e.g. a professor they met.
 
     Call this for "add Professor Lee, lee@berkeley.edu, to my contacts". Use only what
-    the user said.
+    the user said. Put anything they say about the person ("met her at the career
+    fair") in notes: emails to them can use it.
     """
     try:
         cid = contacts.add(
@@ -111,7 +112,13 @@ async def outreach_queue(params: FunctionCallParams):
     for item in messages.queue():
         counts[item["status"]] = counts.get(item["status"], 0) + 1
     drafts = [
-        {"outreach_id": m["id"], "to": m["name"], "company": m["company"], "subject": m["subject"]}
+        {
+            "outreach_id": m["id"],
+            "to": m["name"],
+            "company": m["company"],
+            "subject": m["subject"],
+            "gist": (m["summary"] or {}).get("gist"),
+        }
         for m in messages.queue("drafted")
     ]
     await params.result_callback({"counts": counts, "drafts": drafts[:10]})
@@ -156,6 +163,73 @@ async def draft_emails(
     await params.result_callback({"started": True, "job_id": job_id, **jobs.worker_note()})
 
 
+async def email_summary(params: FunctionCallParams, outreach_id: int):
+    """What a drafted email says, and what's known about the person it's to.
+
+    Call this for "what did you write to Saranya?" or before rewriting a draft. Read
+    the gist and the points aloud, briefly; read the full text only if the user asks.
+    Find outreach_id with outreach_queue.
+    """
+    m = messages.get(outreach_id)
+    if m is None:
+        await params.result_callback({"error": f"no email {outreach_id}"})
+        return
+    from .writer import facts_of
+
+    c = contacts.get(m["contact_id"])
+    await params.result_callback(
+        {
+            "status": m["status"],
+            "to": _short(c),
+            "known_about_them": facts_of(c),
+            "summary": m["summary"],
+            "subject": m["subject"],
+            "body": m["body"],
+            "versions": len(messages.revisions(outreach_id)),
+        }
+    )
+
+
+async def revise_email(params: FunctionCallParams, outreach_id: int, instruction: str):
+    """Rewrite a draft together with the user, in the background (under a minute).
+
+    Call this for "make the Sanofi email shorter", "lead with her vaccine work", "sound
+    less formal", "mention I'm applying to their AI Scientist internship". Pass the
+    user's request in their words. Jarvie updates the email's summary, then rewrites it
+    from the current text, so the user's own edits are kept. The old version is saved.
+    It can only use facts stored about the person: if the user mentions something new
+    about them ("we met at the career fair"), save it with add_contact_fact first.
+    Check job_status, then read the new gist back with email_summary.
+
+    Args:
+        outreach_id: From outreach_queue.
+        instruction: What to change, in the user's words.
+    """
+    m = messages.get(outreach_id)
+    if m is None or m["status"] != "drafted":
+        await params.result_callback({"error": "only drafts can be rewritten"})
+        return
+    job_id = jobs.enqueue(
+        "revise_outreach", {"outreach_id": outreach_id, "instruction": instruction}
+    )
+    await params.result_callback({"started": True, "job_id": job_id, **jobs.worker_note()})
+
+
+async def add_contact_fact(params: FunctionCallParams, contact_id: int, fact: str):
+    """Remember something true about a person, so emails to them can use it.
+
+    Call this when the user tells you something about someone: "I met Sam at the
+    career fair", "she runs the platform team", "he was my TA for CS 61B". Use the
+    user's words. Emails only mention stored facts, so this is how new details get in.
+    """
+    try:
+        key = contacts.add_fact(contact_id, fact)
+    except ValueError as e:
+        await params.result_callback({"error": str(e)})
+        return
+    await params.result_callback({"saved": True, "key": key})
+
+
 OUTREACH_TOOLS = [
     find_email,
     add_contact,
@@ -163,4 +237,7 @@ OUTREACH_TOOLS = [
     do_not_contact,
     draft_emails,
     outreach_queue,
+    email_summary,
+    revise_email,
+    add_contact_fact,
 ]

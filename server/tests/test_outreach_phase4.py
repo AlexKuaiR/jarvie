@@ -106,7 +106,7 @@ def test_drafts_are_checked_queued_and_skips_explained():
         999: "no such contact",
     }
     assert "UC Berkeley '18" in fake.calls[0] and "Alex Kuai" in fake.calls[0]
-    assert job["cost_usd"] == pytest.approx(0.01)
+    assert job["cost_usd"] == pytest.approx(0.02)  # the summary, then the email
 
 
 def test_bad_draft_gets_one_retry_with_the_problems():

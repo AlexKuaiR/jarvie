@@ -40,8 +40,34 @@ CREATE TABLE IF NOT EXISTS outreach (
 -- so a bug elsewhere can't double-email anyone.
 CREATE UNIQUE INDEX IF NOT EXISTS outreach_one_active_per_contact
     ON outreach(contact_id) WHERE status IN ('drafted', 'approved', 'scheduled', 'sent');
+-- Every version of a draft: the first one, each rewrite with Jarvie, your own edits.
+CREATE TABLE IF NOT EXISTS outreach_revisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    outreach_id INTEGER NOT NULL REFERENCES outreach(id),
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    summary TEXT,                   -- JSON EmailSummary the version was written from
+    by TEXT NOT NULL,               -- 'jarvie' (first draft or a rewrite) or 'you' (an edit)
+    instruction TEXT,               -- what you asked for, for a rewrite
+    created_at TEXT NOT NULL
+);
 """
+
+# Columns added after the first release. CREATE TABLE IF NOT EXISTS doesn't change a
+# table that already exists, so a database made before them gets them added here.
+ADDED_COLUMNS = {
+    "outreach": {
+        "summary": "TEXT",  # JSON EmailSummary: the plan the current draft was written from
+        "resume": "TEXT",  # the resume choice it was drafted with ("auto", a name, or NULL)
+    }
+}
 
 
 def connect():
-    return connect_with(OUTREACH_SCHEMA)
+    conn = connect_with(OUTREACH_SCHEMA)
+    for table, cols in ADDED_COLUMNS.items():
+        have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for col, sql_type in cols.items():
+            if col not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {sql_type}")
+    return conn

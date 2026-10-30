@@ -6,6 +6,7 @@ from fastapi.responses import HTMLResponse
 from .. import jobs
 from ..dashboard import NAV, back, render
 from . import contacts, messages, sender
+from .writer import facts_of
 
 
 def add_routes(app: FastAPI) -> None:
@@ -62,11 +63,20 @@ def add_routes(app: FastAPI) -> None:
         counts: dict[str, int] = {}
         for m in items:
             counts[m["status"]] = counts.get(m["status"], 0) + 1
+        drafts = [m for m in items if m["status"] == "drafted"]
+        rewrites = [j for j in jobs.recent(100) if j["kind"] == "revise_outreach"]
+        for m in drafts:
+            # What the rewrite box needs: the person, the versions, and the latest rewrite.
+            m["contact"] = contacts.get(m["contact_id"])
+            m["facts"] = facts_of(m["contact"])
+            m["versions"] = messages.revisions(m["id"])
+            mine = [j for j in rewrites if j["params"].get("outreach_id") == m["id"]]
+            m["rewrite"] = mine[0] if mine else None  # newest first
         return render(
             request,
             "outreach.html",
             "/outreach",
-            drafts=[m for m in items if m["status"] == "drafted"],
+            drafts=drafts,
             others=[m for m in reversed(items) if m["status"] != "drafted"],
             counts=counts,
             dry_run=sender.default_mailer().dry_run,
@@ -93,6 +103,35 @@ def add_routes(app: FastAPI) -> None:
         except (messages.OutreachRefused, KeyError) as e:
             return back("/outreach", str(e))
         return back("/outreach")
+
+    @app.post("/outreach/{outreach_id}/revise")
+    async def revise(outreach_id: int, request: Request):
+        instruction = str((await request.form()).get("instruction", "")).strip()
+        m = messages.get(outreach_id)
+        if not instruction:
+            return back("/outreach", "say what to change")
+        if m is None or m["status"] != "drafted":
+            return back("/outreach", "only drafts can be rewritten")
+        jobs.enqueue("revise_outreach", {"outreach_id": outreach_id, "instruction": instruction})
+        return back(f"/outreach#draft-{outreach_id}")
+
+    @app.post("/outreach/{outreach_id}/restore")
+    async def restore(outreach_id: int, request: Request):
+        form = await request.form()
+        try:
+            messages.restore(outreach_id, int(form.get("revision_id", 0)))
+        except (messages.OutreachRefused, ValueError) as e:
+            return back("/outreach", str(e))
+        return back(f"/outreach#draft-{outreach_id}")
+
+    @app.post("/contacts/{contact_id}/fact")
+    async def add_fact(contact_id: int, request: Request):
+        form = await request.form()
+        try:
+            contacts.add_fact(contact_id, str(form.get("fact", "")))
+        except ValueError as e:
+            return back("/outreach", str(e))
+        return back(str(form.get("next") or "/outreach"))
 
     @app.post("/outreach/approve-all")
     def approve_all():

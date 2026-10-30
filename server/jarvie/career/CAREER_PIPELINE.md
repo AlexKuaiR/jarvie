@@ -42,8 +42,12 @@ Nothing is pushed.
 - **Three models, three jobs.**
   - The voice model (OpenAI, `bot.py`) only talks to you, reads the database and queues jobs.
   - The research agent (Claude Opus 5.5) does all web work.
-  - The writer (Claude Sonnet 5.5) writes emails from the facts the agent stored about each
-    person.
+  - The writer (Claude Sonnet 5.5) writes emails from the facts stored about each person
+    (found by the agent, your contact notes, and facts you add with `add_contact_fact`).
+    It writes a summary first (gist, angle, points, facts used, tone), then the email from
+    it. You rewrite drafts with it by voice (`revise_email`) or the Outreach tab's Rewrite
+    box: it updates the summary from your request, then rewrites the current text, so
+    your edits survive. Every version is kept (`outreach_revisions`) and can be restored.
   - All Claude calls go through `jarvie/llm.py`. It uses adaptive thinking, the server-side
     refusal fallback, cached system prompts (your resume and the rubric) and a cost estimate
     per call.

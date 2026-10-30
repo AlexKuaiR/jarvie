@@ -22,6 +22,7 @@ KINDS = {
     "find_contacts": "outreach",
     "find_email": "outreach",
     "draft_outreach": "outreach",
+    "revise_outreach": "outreach",
 }
 
 JOBS_SCHEMA = """

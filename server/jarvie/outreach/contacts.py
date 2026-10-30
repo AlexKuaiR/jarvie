@@ -112,6 +112,27 @@ def set_email(contact_id: int, email: str, email_source: str, email_verified: st
         raise ValueError(f"{email} already belongs to another contact") from e
 
 
+def add_fact(contact_id: int, fact: str, key: str | None = None) -> str:
+    """Remember something about a person for future emails ("we met at the career fair").
+
+    Facts are what the writer may personalize from; anything else it mentions is
+    rejected by the grounding check. Returns the key it was stored under.
+    """
+    contact = get(contact_id)
+    if contact is None:
+        raise ValueError(f"no contact {contact_id}")
+    if not fact.strip():
+        raise ValueError("the fact is empty")
+    features = contact["features"]
+    if not key:
+        n = 1 + sum(k.startswith("from_you") for k in features)
+        key = "from_you" if n == 1 else f"from_you_{n}"
+    features[key] = fact.strip()
+    with connect() as conn:
+        conn.execute("UPDATE contacts SET features = ? WHERE id = ?", (dumps(features), contact_id))
+    return key
+
+
 def search(
     company: str | None = None,
     school: str | None = None,

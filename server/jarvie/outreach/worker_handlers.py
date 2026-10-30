@@ -34,6 +34,11 @@ def draft_outreach(job: dict, ctx: WorkerContext, spend: Usage) -> dict:
     return writer.draft_outreach(job, ctx.get_writer(), spend, ctx.extra.get("sender"))
 
 
+@handler("revise_outreach")
+def revise_outreach(job: dict, ctx: WorkerContext, spend: Usage) -> dict:
+    return writer.revise_outreach(job, ctx.get_writer(), spend)
+
+
 REPLY_CHECK_SECONDS = 600
 
 
