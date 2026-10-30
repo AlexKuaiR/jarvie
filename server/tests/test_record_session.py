@@ -188,3 +188,63 @@ def test_quit_stops_the_whole_command(monkeypatch, capsys, tmp_path):
     rs.main()
     assert saved == ["l1"]  # section b never started
     assert "Resume with: a b --start 1" in capsys.readouterr().out
+
+
+def test_recorded_takes_reach_training_and_eval(tmp_path, monkeypatch):
+    """Round trip: the folders and manifests record_session.py writes are the ones the training
+    loader (real_data) and the eval (compare) read, for every split, speaker and model."""
+    from jarvie.eval import compare
+    from training import real_data
+
+    monkeypatch.setattr(rs, "DATA", tmp_path)
+    sections = rs.parse_prompts(PROMPTS.read_text())
+    rng = np.random.default_rng(0)
+
+    def take(section, split, speaker="me", condition="quiet", text=None):
+        s = sections[section]
+        args = type(
+            "A",
+            (),
+            {"position": "desk", "condition": condition, "split": split, "speaker": speaker},
+        )()
+        folder = rs.output_dir(split, s.mode, "v1", speaker)
+        lbl = rs.label(s, "desk", condition)
+        audio = (rng.standard_normal(rs.SR) * 0.1).astype("float32")  # distinct takes
+        return rs.save(audio, folder, lbl, text or s.lines[0], s, args)
+
+    take("wake-normal", "train")
+    take("name-normal", "train")
+    take("neg-name-very-similar", "train")
+    take("neg-everyday", "train", condition="talk")
+    take("name-normal", "train", speaker="sam")
+    test_name = take("name-normal", "test")
+    test_everyday = take("neg-everyday", "test", condition="room")
+    take("name-normal", "test", speaker="kim")
+
+    # Training: real/v1/<speaker>/<mode>/, which is what gets uploaded to RunPod.
+    clips = real_data.collect(tmp_path / "real" / "v1")
+    assert real_data.summary(clips) == {
+        "me": {"wake/pos": 1, "name/pos": 1, "name/neg": 1, "wake/neg": 1},
+        "sam": {"name/pos": 1},
+    }
+    assert all(c.text for c in clips)  # manifest text found for every take
+    pos, neg = real_data.training_roles(clips, "name")
+    assert len(pos) == 2 and {c.mode for c in neg} == {"name", "wake"}  # everyday counts too
+
+    # Eval: audio/<mode>/ and audio-speakers/<speaker>/<mode>/, only manifest-listed takes.
+    sets = compare.discover_test_sets("name", tmp_path)
+    assert sets == {"me": test_name.parent, "kim": tmp_path / "audio-speakers" / "kim" / "name"}
+    assert wakeword_recorded(sets["me"]) == {test_name.name}
+    assert compare.missing_inputs("name", [Path("m.onnx")], tmp_path) == []
+    compare.check_leakage(sets, tmp_path / "real")  # test takes aren't in training
+    # Everyday test audio lands in audio/wake/, where the Gate table looks for it.
+    assert test_everyday.parent == tmp_path / "audio" / "wake"
+    assert any(
+        Path(f).match(compare.EVERYDAY_PATTERN) for f in wakeword_recorded(test_everyday.parent)
+    )
+
+
+def wakeword_recorded(folder):
+    from jarvie.eval import wakeword
+
+    return wakeword.recorded_files(folder)

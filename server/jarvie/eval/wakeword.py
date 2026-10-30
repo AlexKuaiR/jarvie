@@ -16,6 +16,7 @@ Typical use:
     df = score_all(session, audio_dir, name, window, hop=1, featurize=featurize)
 """
 
+import csv
 from collections.abc import Callable
 from pathlib import Path
 
@@ -56,6 +57,19 @@ def make_featurizer() -> Featurizer:
         return speech_embedding.extract_embeddings(mel)[0]  # (n_frames, 96)
 
     return featurize
+
+
+def recorded_files(folder: Path) -> set[str]:
+    """The clips listed in the folder's manifest.csv, i.e. recorded with training/record_session.py.
+
+    Older clips in the same folders (from scratch/record.py, which wrote no manifest) are left out
+    of every evaluation, so the results only reflect the current recording sessions.
+    """
+    manifest = folder / "manifest.csv"
+    if not manifest.exists():
+        return set()
+    with manifest.open(newline="") as f:
+        return {row["file"] for row in csv.DictReader(f)}
 
 
 def score_clip(
@@ -114,11 +128,20 @@ def score_all(
     featurize: Featurizer,
     pad_seconds: float = 1.0,
     pattern: str = "*.wav",
+    recorded_only: bool = True,
 ) -> pd.DataFrame:
-    """Score every wav in a directory (or those matching `pattern`). One row per file."""
+    """Score every wav in a directory (or those matching `pattern`). One row per file.
+
+    recorded_only: only clips listed in the folder's manifest.csv (see recorded_files).
+    """
     rows = []
     skipped = []
+    listed = recorded_files(audio_dir) if recorded_only else None
+    ignored = 0
     for path in sorted(audio_dir.glob(pattern)):
+        if listed is not None and path.name not in listed:
+            ignored += 1
+            continue
         parts = path.stem.split("_")
         if len(parts) != 5:
             print(f"skipping malformed name: {path.name}")
@@ -143,6 +166,8 @@ def score_all(
                 "frame_scores": result["scores"],
             }
         )
+    if ignored:
+        print(f"ignored {ignored} older clip(s) in {audio_dir} that aren't in its manifest.csv")
     if skipped:
         print(f"skipped {len(skipped)} file(s):")
         for s in skipped[:10]:

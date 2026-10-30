@@ -82,6 +82,7 @@ def test_check_leakage(tmp_path):
     test.mkdir(parents=True)
     train.mkdir(parents=True)
     (test / "a.wav").write_bytes(b"one")
+    (test / "manifest.csv").write_text("file,text\na.wav,x\n")
     (train / "b.wav").write_bytes(b"two")
     compare.check_leakage({"me": test}, tmp_path / "real")  # no overlap: fine
     (train / "copy.wav").write_bytes(b"one")
@@ -178,6 +179,8 @@ def test_score_everyday_empty_without_recordings(tmp_path):
     (tmp_path / "audio/wake").mkdir(parents=True)
     (tmp_path / "audio/wake/pos_desk_quiet-normal_wake_000.wav").write_bytes(b"x")
     assert compare.score_everyday([], tmp_path).empty  # wake clips aren't everyday speech
+    (tmp_path / "audio/wake/neg-not-similar_desk_loud-normal_wake_000.wav").write_bytes(b"x")
+    assert compare.score_everyday([], tmp_path).empty  # older clip: not in a manifest.csv
 
 
 def test_gate_fires_counts_gate_openings():

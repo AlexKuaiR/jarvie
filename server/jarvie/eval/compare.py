@@ -123,10 +123,10 @@ def check_leakage(test_sets: dict[str, Path], train_root: Path = DATA / "real") 
     the model would have heard it during training, and the results would be meaningless."""
     train = {_digest(p) for p in train_root.rglob("*.wav")} if train_root.exists() else set()
     leaked = [
-        f"{speaker}/{p.name}"
+        f"{speaker}/{name}"
         for speaker, folder in test_sets.items()
-        for p in sorted(folder.glob("*.wav"))
-        if _digest(p) in train
+        for name in sorted(wakeword.recorded_files(folder))
+        if (folder / name).exists() and _digest(folder / name) in train
     ]
     if leaked:
         raise ValueError(
@@ -164,8 +164,11 @@ def general_summary(scores: pd.DataFrame, owner: str = OWNER) -> pd.DataFrame:
 # --- false fires per hour (the stage-2 gate) ---------------------------------------------------
 
 # record_session.py's neg-everyday recordings: long takes of ordinary speech. They're labelled
-# mode=wake, so they're in audio/wake/ whichever model family is being compared.
+# mode=wake, so they're in audio/wake/ whichever model family is being compared. Short clips with
+# the same label (older test sets) are ordinary negatives: only recordings longer than
+# EVERYDAY_MIN_SECONDS count, the same cut-off as LONG_SECONDS in training/real_data.py.
 EVERYDAY_PATTERN = "neg-not-similar_*.wav"
+EVERYDAY_MIN_SECONDS = 6.0
 FRAME_SECONDS = 0.08  # one score per embedding frame (hop=1)
 GATE_HOLD_SECONDS = 3.0  # how long one fire keeps the gate open for the transcript check
 
@@ -190,10 +193,11 @@ def score_everyday(
 ) -> pd.DataFrame:
     """Score your everyday-speech test recordings under every model. Empty if there are none."""
     folder = data / "audio" / "wake"
-    if not any(folder.glob(EVERYDAY_PATTERN)):
+    if not any(fnmatch(f, EVERYDAY_PATTERN) for f in wakeword.recorded_files(folder)):
         return pd.DataFrame()
     check_leakage({OWNER: folder}, train_root)
-    return score_test_sets(model_paths, {OWNER: folder}, EVERYDAY_PATTERN)
+    scored = score_test_sets(model_paths, {OWNER: folder}, EVERYDAY_PATTERN)
+    return scored[scored.duration > EVERYDAY_MIN_SECONDS].reset_index(drop=True)
 
 
 def gate_summary(
@@ -270,9 +274,10 @@ def missing_inputs(mode: str, model_paths: list[Path], data: Path = DATA) -> lis
     missing = []
     if not model_paths:
         missing.append(f"no jarvie_{mode}*.onnx models in server/models/ (train them, then copy)")
-    if not any((data / "audio" / mode).glob("*.wav")):
+    if not wakeword.recorded_files(data / "audio" / mode):
         missing.append(
-            f"no test recordings in {data / 'audio' / mode}/ (record_session.py ... --split test)"
+            f"no test recordings in {data / 'audio' / mode}/ (record_session.py ... --split test;"
+            " older clips without a manifest.csv row don't count)"
         )
     return missing
 
@@ -299,7 +304,9 @@ def evaluate(
 
     # A 30-min everyday recording would count as one negative clip in the EER and fires_* columns
     # (and almost surely fire), so it's kept out of those and only used per hour, in the Gate table.
-    is_everyday = scores.file.map(lambda f: fnmatch(f, EVERYDAY_PATTERN))
+    is_everyday = scores.file.map(lambda f: fnmatch(f, EVERYDAY_PATTERN)) & (
+        scores.duration > EVERYDAY_MIN_SECONDS
+    )
     if mode == "wake":  # already scored: everyday recordings are in audio/wake/
         everyday = scores[is_everyday & (scores.speaker == OWNER)].reset_index(drop=True)
     else:

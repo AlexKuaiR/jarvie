@@ -171,10 +171,18 @@ def test_featurizer_matches_livekit_wakeword(tmp_path):
 # --- score_all ---------------------------------------------------------------
 
 
+def write_manifest(folder, names):
+    """manifest.csv as record_session.py writes it (only the file column matters here)."""
+    (folder / "manifest.csv").write_text("file,text\n" + "".join(f"{n},x\n" for n in names))
+
+
 def test_score_all_parses_names_and_skips_malformed(tmp_path):
     write_wav(tmp_path / "pos_desk_quiet_wake_001.wav", [0.8] * 8)
     write_wav(tmp_path / "neg_far_loud_sleep_012.wav", [0.1] * 8)
     write_wav(tmp_path / "badname.wav", [0.5] * 8)
+    write_manifest(
+        tmp_path, ["pos_desk_quiet_wake_001.wav", "neg_far_loud_sleep_012.wav", "badname.wav"]
+    )
 
     df = wakeword.score_all(
         FakeSession(),
@@ -196,6 +204,17 @@ def test_score_all_parses_names_and_skips_malformed(tmp_path):
         12,
     )
     assert df.iloc[1].max_score == pytest.approx(0.8)
+
+
+def test_score_all_ignores_clips_not_in_the_manifest(tmp_path):
+    write_wav(tmp_path / "pos_desk_quiet_wake_001.wav", [0.8] * 8)
+    write_wav(tmp_path / "pos_desk_loud_wake_004.wav", [0.8] * 8)  # older clip, no manifest row
+    write_manifest(tmp_path, ["pos_desk_quiet_wake_001.wav"])
+    args = dict(window=4, hop=4, featurize=identity_featurize, pad_seconds=0)
+    df = wakeword.score_all(FakeSession(), tmp_path, "audio", **args)
+    assert list(df.file) == ["pos_desk_quiet_wake_001.wav"]
+    everything = wakeword.score_all(FakeSession(), tmp_path, "audio", recorded_only=False, **args)
+    assert len(everything) == 2
 
 
 def test_score_all_empty_folder(tmp_path):
